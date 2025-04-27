@@ -10,9 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/cytetype # Replace 'cytetype' if your PyPI name is different
+      url: https://pypi.org/p/cytetype
     permissions:
-      id-token: write # IMPORTANT: mandatory for trusted publishing
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +30,6 @@ jobs:
 
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        # No API token needed here if using trusted publishing
-        # with:
-        #   user: __token__
-        #   password: ${{ secrets.PYPI_API_TOKEN }} 
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}

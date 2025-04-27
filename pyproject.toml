@@ -8,7 +8,6 @@ dependencies = [
     "anndata>=0.11.4",
     "loguru>=0.7.3",
     "requests>=2.32.3",
-    "tqdm>=4.67.1",
 ]
 
 [dependency-groups]

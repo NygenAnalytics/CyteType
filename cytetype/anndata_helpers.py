@@ -1,7 +1,6 @@
 import anndata
 import numpy as np
 import pandas as pd
-from tqdm.auto import tqdm
 
 from .config import logger
 
@@ -44,9 +43,7 @@ def _calculate_pcent(
     n_genes = adata.shape[1]
     gene_names = adata.var_names
 
-    for s in tqdm(
-        range(0, n_genes, batch_size), desc="Calculating expression %", leave=False
-    ):
+    for s in range(0, n_genes, batch_size):
         e = min(s + batch_size, n_genes)
         batch_data = adata.X[:, s:e]
         if hasattr(batch_data, "toarray"):
