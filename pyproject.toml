@@ -1,0 +1,49 @@
+[project]
+name = "cytetype"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "anndata>=0.11.4",
+    "loguru>=0.7.3",
+    "requests>=2.32.3",
+    "tqdm>=4.67.1",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.15.0",
+    "pytest>=8.3.5",
+    "ruff>=0.11.7",
+    "types-requests>=2.32.0.20250328",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = {find = {}}
+
+
+[tool.mypy]
+strict = false
+
+python_version = "3.12"
+
+disable_error_code = ["import-untyped"]
+
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+check_untyped_defs = true
+disallow_untyped_calls = true
+no_implicit_optional = true
+
+warn_return_any = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+ignore_missing_imports = false

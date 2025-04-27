@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ] # Or your default branch
+  pull_request:
+    branches: [ main ] # Or your default branch
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.12'] # Match requires-python in pyproject.toml
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install uv
+      run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      shell: bash
+
+    - name: Install dependencies
+      run: ~/.local/bin/uv pip sync --all-extras # Installs dev dependencies too
+      # Or if uv is added to PATH: uv pip sync --all-extras
+      shell: bash
+
+    - name: Run Mypy
+      run: ~/.local/bin/uv run mypy .
+      shell: bash
+
+    - name: Run Ruff Check
+      run: ~/.local/bin/uv run ruff check .
+      shell: bash
+
+    - name: Run Pytest
+      run: ~/.local/bin/uv run pytest
+      shell: bash 
