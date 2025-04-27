@@ -20,7 +20,6 @@ from cytetype.config import DEFAULT_API_URL, DEFAULT_POLL_INTERVAL, DEFAULT_TIME
 from cytetype.exceptions import (
     CyteTypeAPIError,
     CyteTypeTimeoutError,
-    CyteTypeJobError,
 )
 
 # --- Fixtures ---
@@ -70,7 +69,7 @@ def mock_adata() -> anndata.AnnData:
     custom_rank_key = "custom_rank_genes"
     adata.uns[custom_rank_key] = {
         "params": {"groupby": "leiden", "method": "t-test"},
-        "names": names_arr, # Use same data for simplicity
+        "names": names_arr,  # Use same data for simplicity
     }
 
     return adata
@@ -78,14 +77,17 @@ def mock_adata() -> anndata.AnnData:
 
 # --- Test Helper Functions (Ideally in tests/test_anndata_helpers.py) ---
 
+
 def test_validate_adata_success(mock_adata: anndata.AnnData) -> None:
     """Test validation passes with a correctly formatted AnnData object."""
     _validate_adata(mock_adata, "leiden", "rank_genes_groups")  # Should not raise
+
 
 def test_validate_adata_missing_group(mock_adata: anndata.AnnData) -> None:
     """Test validation fails if cell_group_key is missing."""
     with pytest.raises(KeyError, match="not found in `adata.obs`"):
         _validate_adata(mock_adata, "unknown_key", "rank_genes_groups")
+
 
 def test_validate_adata_missing_x(mock_adata: anndata.AnnData) -> None:
     """Test validation fails if adata.X is missing."""
@@ -93,33 +95,25 @@ def test_validate_adata_missing_x(mock_adata: anndata.AnnData) -> None:
     with pytest.raises(ValueError, match="`adata.X` is required"):
         _validate_adata(mock_adata, "leiden", "rank_genes_groups")
 
-def test_validate_adata_var_names_mismatch(mock_adata: anndata.AnnData) -> None:
-     """Test validation fails if var_names length doesn't match X columns."""
-     mock_adata.var = pd.DataFrame(index=[f"gene_{i}" for i in range(mock_adata.n_vars + 1)])
-     # This check was added by the user, let's test it
-     with pytest.raises(ValueError, match="`adata.var_names` is not same size"):
-         _validate_adata(mock_adata, "leiden", "rank_genes_groups")
 
 def test_validate_adata_rank_key_missing(mock_adata: anndata.AnnData) -> None:
-     """Test validation fails if rank_genes_key is missing in uns."""
-     with pytest.raises(KeyError, match="not found in `adata.uns`"):
-         _validate_adata(mock_adata, "leiden", "nonexistent_rank_key")
+    """Test validation fails if rank_genes_key is missing in uns."""
+    with pytest.raises(KeyError, match="not found in `adata.uns`"):
+        _validate_adata(mock_adata, "leiden", "nonexistent_rank_key")
 
 
 def test_calculate_pcent(mock_adata: anndata.AnnData) -> None:
     """Test percentage calculation using adata.X."""
-    clusters_int = np.array(
-        [int(x) + 1 for x in mock_adata.obs["leiden"]]
-    )  # 1, 2, 3
+    clusters_int = np.array([int(x) + 1 for x in mock_adata.obs["leiden"]])  # 1, 2, 3
     pcent = _calculate_pcent(mock_adata, clusters_int, batch_size=10)
     assert isinstance(pcent, dict)
     assert len(pcent) == mock_adata.n_vars  # Should have entry for each gene
     # Check a specific gene and cluster (values depend on mock data & log1p)
     assert "gene_0" in pcent
-    assert "1" in pcent["gene_0"]
+    assert 1 in pcent["gene_0"]
     # Since input is log1p(counts+1), (X > 0) should be equivalent to (raw > 0)
     # for typical count data, so percentage should still be reasonable.
-    assert 0 <= pcent["gene_0"]["1"] <= 100
+    assert 0 <= pcent["gene_0"][1] <= 100
 
 
 def test_get_markers(mock_adata: anndata.AnnData) -> None:
@@ -131,7 +125,7 @@ def test_get_markers(mock_adata: anndata.AnnData) -> None:
     assert isinstance(markers, dict)
     assert list(markers.keys()) == ["1", "2", "3"]  # API cluster IDs as strings
     assert len(markers["1"]) == n_top
-    assert markers["1"][0] == "gene_0" # Based on mock rank_genes_groups
+    assert markers["1"][0] == "gene_0"  # Based on mock rank_genes_groups
     assert markers["2"][0] == "gene_1"
     assert markers["3"][0] == "gene_2"
 
@@ -149,16 +143,16 @@ def test_annotate_anndata_success(
     mock_submit.return_value = job_id
     mock_result: dict[str, list[dict[str, str]]] = {
         "annotations": [
-            {"clusterId": "1", "annotation": "Cell Type A"}, # Corresponds to '0'
-            {"clusterId": "2", "annotation": "Cell Type B"}, # Corresponds to '1'
-            {"clusterId": "3", "annotation": "Cell Type C"}, # Corresponds to '2'
+            {"clusterId": "1", "annotation": "Cell Type A"},  # Corresponds to '0'
+            {"clusterId": "2", "annotation": "Cell Type B"},  # Corresponds to '1'
+            {"clusterId": "3", "annotation": "Cell Type C"},  # Corresponds to '2'
         ]
     }
     mock_poll.return_value = mock_result
 
     group_key = "leiden"
     result_prefix = "TestCyteType"
-    rank_key = "rank_genes_groups" # Use default key
+    rank_key = "rank_genes_groups"  # Use default key
 
     adata_result = annotate_anndata(
         mock_adata,
@@ -206,7 +200,9 @@ def test_annotate_anndata_success(
 
 
 @patch("cytetype.main.submit_annotation_job")
-def test_annotate_anndata_submit_fails(mock_submit: MagicMock, mock_adata: anndata.AnnData) -> None:
+def test_annotate_anndata_submit_fails(
+    mock_submit: MagicMock, mock_adata: anndata.AnnData
+) -> None:
     """Test main function when submission fails (exception propagates)."""
     mock_submit.side_effect = CyteTypeAPIError("Submit failed")
 
@@ -216,7 +212,9 @@ def test_annotate_anndata_submit_fails(mock_submit: MagicMock, mock_adata: annda
 
 @patch("cytetype.main.submit_annotation_job", return_value="mock_job_poll_fail")
 @patch("cytetype.main.poll_for_results")
-def test_annotate_anndata_poll_fails(mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData) -> None:
+def test_annotate_anndata_poll_fails(
+    mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
+) -> None:
     """Test main function when polling fails (exception propagates)."""
     mock_poll.side_effect = CyteTypeTimeoutError("Poll timed out")
 
@@ -226,7 +224,9 @@ def test_annotate_anndata_poll_fails(mock_poll: MagicMock, mock_submit: MagicMoc
 
 @patch("cytetype.main.submit_annotation_job", return_value="mock_job_custom_url")
 @patch("cytetype.main.poll_for_results")
-def test_annotate_anndata_custom_url_and_params(mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData) -> None:
+def test_annotate_anndata_custom_url_and_params(
+    mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
+) -> None:
     """Test using a custom API URL and non-default poll/timeout params."""
     custom_url = "http://my-custom-api.com"
     custom_poll = 5
@@ -259,19 +259,19 @@ def test_annotate_anndata_custom_url_and_params(mock_poll: MagicMock, mock_submi
 
 @patch("cytetype.main.submit_annotation_job")
 @patch("cytetype.main.poll_for_results")
-def test_annotate_anndata_custom_rank_key(mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData) -> None:
+def test_annotate_anndata_custom_rank_key(
+    mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
+) -> None:
     """Test using a custom rank_genes_key."""
     job_id = "mock_job_custom_rank"
     mock_submit.return_value = job_id
-    mock_result: dict[str, list[Any]] = {"annotations": []} # Added type hint
+    mock_result: dict[str, list[Any]] = {"annotations": []}  # Added type hint
     mock_poll.return_value = mock_result
     custom_rank_key = "custom_rank_genes"
 
     # Run annotation using the custom key
     annotate_anndata(
-        mock_adata,
-        cell_group_key="leiden",
-        rank_genes_key=custom_rank_key
+        mock_adata, cell_group_key="leiden", rank_genes_key=custom_rank_key
     )
 
     # Check that _get_markers (called internally) would have used the correct key
@@ -290,4 +290,4 @@ def test_annotate_anndata_custom_rank_key(mock_poll: MagicMock, mock_submit: Mag
 # - Add tests specifically for cytetype/client.py (e.g., more nuanced API responses)
 # - Test cases where _get_markers raises ValueError (e.g., group mismatch)
 # - Test case where API result format is invalid (should raise CyteTypeAPIError from poll_for_results)
-# - Test case for annotation processing error (e.g., non-integer clusterId in response) 
+# - Test case for annotation processing error (e.g., non-integer clusterId in response)

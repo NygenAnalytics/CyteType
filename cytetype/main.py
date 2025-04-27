@@ -55,7 +55,9 @@ def annotate_anndata(
 
     _validate_adata(adata, cell_group_key, rank_genes_key)
 
-    ct_map = {str(x): n + 1 for n, x in enumerate(sorted(adata.obs[cell_group_key].unique()))}
+    ct_map = {
+        str(x): n + 1 for n, x in enumerate(sorted(adata.obs[cell_group_key].unique()))
+    }
     clusters_int = np.array([ct_map[str(x)] for x in adata.obs[cell_group_key]])
 
     logger.info("Calculating expression percentages.")
@@ -73,9 +75,15 @@ def annotate_anndata(
         "organisms": [organism] if organism else ["Unknown"],
         "tissues": tissues if tissues is not None else ["Unknown"],
         "diseases": diseases if diseases is not None else ["Unknown"],
-        "developmentalStages": developmental_stages if developmental_stages is not None else ["Unknown"],
-        "singleCellMethods": single_cell_methods if single_cell_methods is not None else ["Unknown"],
-        "experimentalConditions": experimental_conditions if experimental_conditions is not None else ["Unknown"],
+        "developmentalStages": developmental_stages
+        if developmental_stages is not None
+        else ["Unknown"],
+        "singleCellMethods": single_cell_methods
+        if single_cell_methods is not None
+        else ["Unknown"],
+        "experimentalConditions": experimental_conditions
+        if experimental_conditions is not None
+        else ["Unknown"],
     }
 
     query = {
@@ -91,7 +99,7 @@ def annotate_anndata(
         job_id, api_url, poll_interval_seconds, timeout_seconds
     )
 
-    adata.uns[f"{results_key_added}_results"] = {
+    adata.uns[f"{results_key_added}_{cell_group_key}"] = {
         "job_id": job_id,
         "result": annotation_results,
     }

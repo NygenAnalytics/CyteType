@@ -6,7 +6,9 @@ from tqdm.auto import tqdm
 from .config import logger
 
 
-def _validate_adata(adata: anndata.AnnData, cell_group_key: str, rank_genes_key: str) -> None:
+def _validate_adata(
+    adata: anndata.AnnData, cell_group_key: str, rank_genes_key: str
+) -> None:
     """Validate the AnnData object structure."""
 
     if cell_group_key not in adata.obs:
@@ -15,7 +17,7 @@ def _validate_adata(adata: anndata.AnnData, cell_group_key: str, rank_genes_key:
         raise ValueError(
             "`adata.X` is required for ranking genes. Please ensure it contains log1p normalized data."
         )
-    if len(adata.var_names) == adata.shape[1]:
+    if len(adata.var_names) != adata.shape[1]:
         raise ValueError("`adata.var_names` is not same size as `adata.X`")
     if rank_genes_key not in adata.uns:
         raise KeyError(
@@ -35,7 +37,7 @@ def _validate_adata(adata: anndata.AnnData, cell_group_key: str, rank_genes_key:
 
 def _calculate_pcent(
     adata: anndata.AnnData, clusters: np.ndarray, batch_size: int
-) -> dict[str, dict[str, float]]:
+) -> dict[str, dict[int, float]]:
     """Calculate percentage of cells expressing each gene within clusters."""
 
     pcent = {}
@@ -44,7 +46,7 @@ def _calculate_pcent(
 
     for s in tqdm(
         range(0, n_genes, batch_size), desc="Calculating expression %", leave=False
-    ):  
+    ):
         e = min(s + batch_size, n_genes)
         batch_data = adata.X[:, s:e]
         if hasattr(batch_data, "toarray"):
@@ -88,6 +90,12 @@ def _get_markers(
             )
 
     markers = {}
+    # Use var_names directly if features attribute doesn't exist
+    if hasattr(adata.var, "features"):
+        gene_ids_to_name = adata.var.features.to_dict()
+    else:
+        # Create a simple mapping from index (gene_id) to itself (gene_name)
+        gene_ids_to_name = {gene_id: gene_id for gene_id in adata.var_names}
 
     for group_name in list(mdf.columns):
         api_cluster_id = None
@@ -104,6 +112,8 @@ def _get_markers(
             )
 
         top_genes = mdf[group_name].values[: min(n_top_genes, len(mdf))]
-        markers[api_cluster_id] = list(top_genes)
+        # Filter out genes that aren't in the gene_ids_to_name dictionary
+        valid_genes = [gene for gene in top_genes if gene in gene_ids_to_name]
+        markers[api_cluster_id] = [gene_ids_to_name[gene] for gene in valid_genes]
 
     return markers

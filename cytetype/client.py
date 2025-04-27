@@ -47,13 +47,15 @@ def poll_for_results(
 ) -> dict[str, Any]:
     """Polls the API for results for a given job ID."""
 
+    time.sleep(10)
+
     retrieve_url = f"{api_url}/retrieve/{job_id}"
     logger.debug(f"Polling for results for job {job_id} at {retrieve_url}")
     start_time = time.time()
     while True:
         elapsed_time = time.time() - start_time
         if elapsed_time > timeout:
-            raise CyteTypeTimeoutError(f"Timeout while fetching results")
+            raise CyteTypeTimeoutError("Timeout while fetching results")
 
         logger.debug(
             f"Polling attempt for job {job_id}. Elapsed time: {elapsed_time:.1f}s"
@@ -71,14 +73,14 @@ def poll_for_results(
                     not isinstance(result_data, dict)
                     or "annotations" not in result_data
                 ):
-                    raise CyteTypeAPIError(f"Invalid response while parsing results")
+                    raise CyteTypeAPIError("Invalid response while parsing results")
                 return result_data
             elif status == "error":
                 error_message = data.get("message", "Unknown error")
                 logger.debug(
                     f"Annotation job {job_id} failed on the server: {error_message}"
                 )
-                raise CyteTypeJobError(f"Server error: job failed")
+                raise CyteTypeJobError("Server error: job failed")
             elif status in ["processing", "pending"]:
                 logger.debug(
                     f"Job {job_id} status: {status}. Waiting {poll_interval}s..."
@@ -105,9 +107,9 @@ def poll_for_results(
             logger.debug(
                 f"Network error during polling request for job {job_id}: {e}. Details: {error_details}"
             )
-            raise CyteTypeAPIError(f"Network error while fetching results") from e
+            raise CyteTypeAPIError("Network error while fetching results") from e
 
         except (ValueError, KeyError, requests.exceptions.JSONDecodeError) as e:
-            raise CyteTypeAPIError(f"Invalid response while fetching results") from e
+            raise CyteTypeAPIError("Invalid response while fetching results") from e
         except Exception as e:
             raise CyteTypeAPIError("Unexpected error while fetching results") from e

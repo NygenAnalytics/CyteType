@@ -1,7 +1,7 @@
 [project]
 name = "cytetype"
 version = "0.1.0"
-description = "Add your description here"
+description = "Python client for automated cell type annotation of single-cell RNA-seq data."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

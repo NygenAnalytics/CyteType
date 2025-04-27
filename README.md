@@ -1,117 +1,127 @@
-# CyteType Python Client
+<p align="center">
+  <img src="logo.svg" alt="CyteType Logo" width="200"/>
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) <!-- TODO: Update license badge if needed -->
+<h1 align="center">CyteType Python Client</h1>
 
-A Python package to interact with the CyteType API for cell type annotation of single-cell RNA-seq data stored in AnnData objects.
+<p align="center">
+  <!-- GitHub Actions CI Badge -->
+  <a href="https://github.com/paras5/cytetype/actions/workflows/ci.yml">
+    <img src="https://github.com/paras5/cytetype/actions/workflows/ci.yml/badge.svg" alt="CI Status">
+  </a>
+  <!-- PyPI Version Badge -->
+  <a href="https://pypi.org/project/cytetype/">
+    <img src="https://img.shields.io/pypi/v/cytetype.svg" alt="PyPI version">
+  </a>
+  <!-- Python Version Badge -->
+  <a href="https://pypi.org/project/cytetype/">
+    <img src="https://img.shields.io/pypi/pyversions/cytetype.svg" alt="Python versions">
+  </a>
+    <!-- License Badge -->
+  <a href="https://github.com/paras5/cytetype/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg" alt="License: CC BY-NC-SA 4.0">
+  </a>
+</p>
+
+---
+
+**CyteType** is a Python package providing a convenient interface to the CyteType API for automated cell type annotation of single-cell RNA-seq data. It works directly with `AnnData` objects commonly used in bioinformatics workflows.
+
+## Key Features
+
+*   Seamless integration with `AnnData` objects.
+*   Submits marker genes derived from `scanpy.tl.rank_genes_groups`.
+*   Handles API communication, job submission, and results polling.
+*   Adds annotation results directly back into your `AnnData` object (`adata.obs` and `adata.uns`).
+*   Configurable API endpoint, polling interval, and timeout.
 
 ## Installation
 
-Currently, you can install the package directly from the source code:
-
-```bash
-# Clone the repository (if you haven't already)
-# git clone https://github.com/yourusername/cytetype.git
-# cd cytetype
-
-pip install .
-```
-
-Alternatively, if the package is published to PyPI:
+You can install CyteType using `pip` or `uv`:
 
 ```bash
 pip install cytetype
 ```
 
-**Dependencies:**
+or
 
-The package requires the following Python libraries:
+```bash
+uv pip install cytetype
+```
 
-*   `anndata`
-*   `numpy`
-*   `pandas`
-*   `scanpy`
-*   `requests`
-*   `tqdm`
+## Basic Usage
 
-These will be installed automatically when using `pip`.
-
-## Usage
-
-Here's a basic example of how to use the package:
+Here's a minimal example demonstrating how to use CyteType after running standard Scanpy preprocessing and marker gene identification:
 
 ```python
-import scanpy as sc
 import anndata
-from cytetype.annotator import annotate_anndata
+import scanpy as sc
+from cytetype.main import annotate_anndata
+from cytetype.config import logger
 
-# Load your AnnData object
-# Ensure it has raw counts in adata.raw.X
-# Ensure it has log1p normalized data in adata.X
-# Ensure you have run clustering (e.g., Leiden) and stored in adata.obs['leiden']
+# --- Preprocessing ---
+# 1. Load your data
 adata = anndata.read_h5ad("path/to/your/data.h5ad")
 
-# --- Preprocessing (Example - adapt as needed) ---
-# Make sure raw counts are stored if not already
-if adata.raw is None:
-    adata.raw = adata.copy()
-
-# Basic filtering, normalization, PCA, neighbors, clustering
-sc.pp.filter_cells(adata, min_genes=200)
-sc.pp.filter_genes(adata, min_cells=3)
+# 2. Perform standard preprocessing (filtering, normalization, etc.)
+#    Example steps (adapt to your data):
 sc.pp.normalize_total(adata, target_sum=1e4)
 sc.pp.log1p(adata)
-sc.pp.highly_variable_genes(adata, min_mean=0.0125, max_mean=3, min_disp=0.5)
-adata = adata[:, adata.var.highly_variable]
-sc.pp.scale(adata, max_value=10)
-sc.tl.pca(adata, svd_solver='arpack')
-sc.pp.neighbors(adata, n_neighbors=10, n_pcs=40)
-sc.tl.leiden(adata, key_added='leiden') # Use 'leiden' as cell_group_key
-# -------------------------------------------------
+# ... other steps like HVG selection, scaling, PCA, neighbors ...
 
-# Define biological context (optional but recommended)
-org = "Homo sapiens"
-tissue_list = ["Peripheral blood mononuclear cell", "Blood"]
-disease_list = ["Healthy"]
+# 3. Perform clustering (e.g., Leiden)
+sc.tl.leiden(adata, key_added='leiden_clusters')
 
-# Run CyteType annotation
-try:
-    adata = annotate_anndata(
-        adata=adata,
-        cell_group_key='leiden',  # Key in adata.obs containing cluster labels
-        organism=org,
-        tissues=tissue_list,
-        diseases=disease_list,
-        # Optional: specify a different API endpoint
-        # api_url="http://your-custom-api-url/"
-    )
+# 4. Find marker genes using rank_genes_groups
+#    Ensure you use the same key as your clustering ('leiden_clusters' here)
+sc.tl.rank_genes_groups(adata, groupby='leiden_clusters', method='t-test', key_added='rank_genes_leiden')
 
-    # Results are added to:
-    # adata.obs['CyteType_leiden'] (annotations)
-    # adata.uns['CyteType_results'] (raw API response and status)
-
-    print("Annotation successful!")
-    print(adata.obs['CyteType_leiden'].value_counts())
-
-except Exception as e:
-    print(f"Annotation failed: {e}")
-    # Check adata.uns['CyteType_results'] for error details if available
+# --- Annotation ---
+adata = annotate_anndata(
+    adata=adata,
+    cell_group_key='leiden_clusters',    # Key in adata.obs with cluster labels
+    rank_genes_key='rank_genes_leiden',  # Key in adata.uns with rank_genes_groups results
+    results_key_added='CyteType',        # Prefix for keys added by CyteType
+    n_top_genes=50                      # Number of top marker genes per cluster to submit
+)
 
 ```
 
-## Development & Testing
+## Development
 
 To set up for development:
 
-```bash
-pip install -r requirements-dev.txt
-pip install -e .
-```
+1.  Clone the repository:
+    ```bash
+    git clone https://github.com/paras5/cytetype.git
+    cd cytetype
+    ```
+2.  Create and activate a virtual environment (recommended):
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate # or .venv\Scripts\activate on Windows
+    ```
+3.  Install dependencies using `uv` (includes development tools):
+    ```bash
+    pip install uv # Install uv if you don't have it
+    uv pip sync --all-extras
+    ```
+4.  Install the package in editable mode:
+    ```bash
+    pip install -e .
+    ```
 
-Run tests using pytest:
+### Running Checks and Tests
 
-```bash
-pytest
-```
+*   **Mypy (Type Checking):** `uv run mypy .`
+*   **Ruff (Linting & Formatting):** `uv run ruff check .` and `uv run ruff format .`
+*   **Pytest (Unit Tests):** `uv run pytest`
 
-<!-- TODO: Add contribution guidelines if applicable -->
-<!-- TODO: Add link to API documentation if available -->
+
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
