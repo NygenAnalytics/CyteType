@@ -2,7 +2,7 @@
   <img src="logo.svg" alt="CyteType Logo" width="200"/>
 </p>
 
-<h1 align="center">CyteType Python Client</h1>
+<h1 align="left">CyteType</h1>
 
 <p align="center">
   <!-- GitHub Actions CI Badge -->
@@ -20,7 +20,7 @@
 
 ---
 
-**CyteType** is a Python package providing a convenient interface to the CyteType API for automated cell type annotation of single-cell RNA-seq data. It works directly with `AnnData` objects commonly used in bioinformatics workflows.
+**CyteType** is a Python package for automated cell type annotation of single-cell RNA-seq data. It integrates directly with `AnnData` object.
 
 ## Key Features
 
