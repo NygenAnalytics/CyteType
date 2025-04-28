@@ -9,6 +9,16 @@ dependencies = [
     "loguru>=0.7.3",
     "requests>=2.32.3",
 ]
+authors = [
+    {name = "Parashar Dhapola", email = "parashar@nygen.io"}
+]
+license = {text = "CC BY-NC-SA 4.0"}
+urls = {
+    "Homepage" = "https://github.com/NygenAnalytics/CyteType",
+    "Bug Tracker" = "https://github.com/NygenAnalytics/CyteType/issues",
+    "Source Code" = "https://github.com/NygenAnalytics/CyteType"
+}
+keywords = ["bioinformatics", "single-cell", "RNA-seq", "annotation", "cell types"]
 
 [dependency-groups]
 dev = [

@@ -6,13 +6,13 @@
 
 <p align="center">
   <!-- GitHub Actions CI Badge -->
-  <a href="https://github.com/paras5/cytetype/actions/workflows/ci.yml">
-    <img src="https://github.com/paras5/cytetype/actions/workflows/ci.yml/badge.svg" alt="CI Status">
+  <a href="https://github.com/NygenAnalytics/CyteType/actions/workflows/ci.yml">
+    <img src="https://github.com/NygenAnalytics/CyteType/actions/workflows/ci.yml/badge.svg" alt="CI Status">
   </a>
   <a href="https://pypi.org/project/cytetype/">
     <img src="https://img.shields.io/pypi/v/cytetype.svg" alt="PyPI version">
   </a>
-  <a href="https://github.com/paras5/cytetype/blob/main/LICENSE">
+  <a href="https://github.com/NygenAnalytics/CyteType/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg" alt="License: CC BY-NC-SA 4.0">
   </a>
 </p>
@@ -87,7 +87,7 @@ To set up for development:
 
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/paras5/cytetype.git
+    git clone https://github.com/NygenAnalytics/CyteType.git
     cd cytetype
     ```
 2.  Create and activate a virtual environment (recommended):
@@ -118,4 +118,4 @@ Contributions are welcome! Please open an issue or submit a pull request.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the CC BY-NC-SA 4.0 License - see the [LICENSE](LICENSE) file for details.
