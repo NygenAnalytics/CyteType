@@ -40,4 +40,5 @@ jobs:
 
     - name: Run Pytest
       run: ~/.local/bin/uv run pytest
-      shell: bash 
+      shell: bash
+    
