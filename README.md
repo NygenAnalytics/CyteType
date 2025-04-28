@@ -26,9 +26,7 @@
 
 *   Seamless integration with `AnnData` objects.
 *   Submits marker genes derived from `scanpy.tl.rank_genes_groups`.
-*   Handles API communication, job submission, and results polling.
 *   Adds annotation results directly back into your `AnnData` object (`adata.obs` and `adata.uns`).
-*   Configurable API endpoint, polling interval, and timeout.
 
 ## Installation
 
@@ -54,20 +52,14 @@ import scanpy as sc
 from cytetype import annotate_anndata
 
 # --- Preprocessing ---
-# 1. Load your data
 adata = anndata.read_h5ad("path/to/your/data.h5ad")
 
-# 2. Perform standard preprocessing (filtering, normalization, etc.)
-#    Example steps (adapt to your data):
 sc.pp.normalize_total(adata, target_sum=1e4)
 sc.pp.log1p(adata)
 # ... other steps like HVG selection, scaling, PCA, neighbors ...
 
-# 3. Perform clustering (e.g., Leiden)
 sc.tl.leiden(adata, key_added='leiden_clusters')
 
-# 4. Find marker genes using rank_genes_groups
-#    Ensure you use the same key as your clustering ('leiden_clusters' here)
 sc.tl.rank_genes_groups(adata, groupby='leiden_clusters', method='t-test', key_added='rank_genes_leiden')
 
 # --- Annotation ---
