@@ -51,8 +51,7 @@ Here's a minimal example demonstrating how to use CyteType after running standar
 ```python
 import anndata
 import scanpy as sc
-from cytetype.main import annotate_anndata
-from cytetype.config import logger
+from cytetype import annotate_anndata
 
 # --- Preprocessing ---
 # 1. Load your data
@@ -79,6 +78,12 @@ adata = annotate_anndata(
     results_key_added='CyteType',        # Prefix for keys added by CyteType
     n_top_genes=50                      # Number of top marker genes per cluster to submit
 )
+
+# Access the cell type annotations that were added to the AnnData object
+print(adata.obs.CyteType_leiden_clusters)
+
+# Get detailed information about the annotation results
+print (adata.uns['CyteType_leiden_clusters'])
 
 ```
 
