@@ -4,7 +4,7 @@
 
 <h1 align="left">CyteType</h1>
 
-<p align="center">
+<p align="left">
   <!-- GitHub Actions CI Badge -->
   <a href="https://github.com/NygenAnalytics/CyteType/actions/workflows/publish.yml">
     <img src="https://github.com/NygenAnalytics/CyteType/actions/workflows/publish.yml/badge.svg" alt="CI Status">
