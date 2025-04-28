@@ -154,7 +154,7 @@ def annotate_anndata(
         job_id, api_url, poll_interval_seconds, timeout_seconds
     )
 
-    adata.uns[f"{results_key_added}_results"] = {
+    adata.uns[f"{results_key_added}_{cell_group_key}"] = {
         "job_id": job_id,
         "result": annotation_results,
     }
