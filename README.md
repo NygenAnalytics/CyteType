@@ -6,8 +6,8 @@
 
 <p align="center">
   <!-- GitHub Actions CI Badge -->
-  <a href="https://github.com/NygenAnalytics/CyteType/actions/workflows/ci.yml">
-    <img src="https://github.com/NygenAnalytics/CyteType/actions/workflows/ci.yml/badge.svg" alt="CI Status">
+  <a href="https://github.com/NygenAnalytics/CyteType/actions/workflows/publish.yml">
+    <img src="https://github.com/NygenAnalytics/CyteType/actions/workflows/publish.yml/badge.svg" alt="CI Status">
   </a>
   <a href="https://pypi.org/project/cytetype/">
     <img src="https://img.shields.io/pypi/v/cytetype.svg" alt="PyPI version">
@@ -15,6 +15,7 @@
   <a href="https://github.com/NygenAnalytics/CyteType/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg" alt="License: CC BY-NC-SA 4.0">
   </a>
+  <img src="https://img.shields.io/badge/python-≥3.12-blue.svg" alt="Python Version">
 </p>
 
 ---
