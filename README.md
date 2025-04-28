@@ -9,15 +9,9 @@
   <a href="https://github.com/paras5/cytetype/actions/workflows/ci.yml">
     <img src="https://github.com/paras5/cytetype/actions/workflows/ci.yml/badge.svg" alt="CI Status">
   </a>
-  <!-- PyPI Version Badge -->
   <a href="https://pypi.org/project/cytetype/">
     <img src="https://img.shields.io/pypi/v/cytetype.svg" alt="PyPI version">
   </a>
-  <!-- Python Version Badge -->
-  <a href="https://pypi.org/project/cytetype/">
-    <img src="https://img.shields.io/pypi/pyversions/cytetype.svg" alt="Python versions">
-  </a>
-    <!-- License Badge -->
   <a href="https://github.com/paras5/cytetype/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg" alt="License: CC BY-NC-SA 4.0">
   </a>
