@@ -22,23 +22,29 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install uv
-      run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+      shell: bash
+
+    - name: Create virtual environment
+      run: uv venv
       shell: bash
 
     - name: Install dependencies
-      run: ~/.local/bin/uv pip install ".[dev]" # Installs dev dependencies too
+      run: uv pip install ".[dev]" # Installs dev dependencies too
       # Or if uv is added to PATH: uv pip install ".[dev]"
       shell: bash
 
     - name: Run Mypy
-      run: ~/.local/bin/uv run mypy .
+      run: uv run mypy .
       shell: bash
 
     - name: Run Ruff Check
-      run: ~/.local/bin/uv run ruff check .
+      run: uv run ruff check .
       shell: bash
 
     - name: Run Pytest
-      run: ~/.local/bin/uv run pytest
+      run: uv run pytest
       shell: bash
     
