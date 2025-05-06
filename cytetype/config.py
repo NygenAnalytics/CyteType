@@ -7,7 +7,7 @@ logger.remove()
 logger.add(
     sys.stdout,
     level="INFO",
-    format="<level>{level: <8}</level> <level>{message}</level>",
+    format="{message}",
 )
 
 DEFAULT_API_URL = "https://nygen-labs-prod--cell-annotation-agent-fastapi-app.modal.run"
