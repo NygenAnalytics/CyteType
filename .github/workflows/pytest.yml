@@ -21,19 +21,11 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
-      shell: bash
-
-    - name: Create virtual environment
-      run: uv venv
-      shell: bash
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v6
 
     - name: Install dependencies
-      run: uv pip install ".[dev]" # Installs dev dependencies too
-      # Or if uv is added to PATH: uv pip install ".[dev]"
+      run: uv sync --locked --all-extras # Installs base and dev dependencies from uv.lock
       shell: bash
 
     - name: Run Mypy
