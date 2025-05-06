@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ] # Or your default branch
+    branches: [ master ] # Or your default branch
   pull_request:
-    branches: [ main ] # Or your default branch
+    branches: [ master ] # Or your default branch
 
 jobs:
   test:
