@@ -6,7 +6,10 @@ from .config import logger
 
 
 def _validate_adata(
-    adata: anndata.AnnData, cell_group_key: str, rank_genes_key: str
+    adata: anndata.AnnData,
+    cell_group_key: str,
+    rank_genes_key: str,
+    gene_symbols_col: str,
 ) -> None:
     """Validate the AnnData object structure."""
 
@@ -22,6 +25,8 @@ def _validate_adata(
         raise KeyError(
             f"'{rank_genes_key}' not found in `adata.uns`. Run `sc.tl.rank_genes_groups` first."
         )
+    if hasattr(adata.var, gene_symbols_col) is False:
+        raise KeyError(f"Column '{gene_symbols_col}' not found in `adata.var`.")
     if adata.uns[rank_genes_key]["params"]["groupby"] != cell_group_key:
         raise ValueError(
             f"`rank_genes_groups` run with groupby='{adata.uns[rank_genes_key]['params']['groupby']}', expected '{cell_group_key}'."
@@ -35,13 +40,12 @@ def _validate_adata(
 
 
 def _calculate_pcent(
-    adata: anndata.AnnData, clusters: np.ndarray, batch_size: int
-) -> dict[str, dict[int, float]]:
+    adata: anndata.AnnData, clusters: list[str], batch_size: int, gene_names: list[str]
+) -> dict[str, dict[str, float]]:
     """Calculate percentage of cells expressing each gene within clusters."""
 
     pcent = {}
     n_genes = adata.shape[1]
-    gene_names = adata.var_names
 
     for s in range(0, n_genes, batch_size):
         e = min(s + batch_size, n_genes)
@@ -66,8 +70,9 @@ def _get_markers(
     adata: anndata.AnnData,
     cell_group_key: str,
     rank_genes_key: str,
-    ct_map: dict[str, int],
+    ct_map: dict[str, str],
     n_top_genes: int,
+    gene_symbols_col: str,
 ) -> dict[str, list[str]]:
     """Extract top marker genes from rank_genes_groups results."""
     try:
@@ -86,31 +91,19 @@ def _get_markers(
                 f"Failed to extract marker gene names from `rank_genes_groups`. Error: {e}"
             )
 
+    gene_ids_to_name = adata.var[gene_symbols_col].to_dict()
     markers = {}
-    # Use var_names directly if features attribute doesn't exist
-    if hasattr(adata.var, "features"):
-        gene_ids_to_name = adata.var.features.to_dict()
-    else:
-        # Create a simple mapping from index (gene_id) to itself (gene_name)
-        gene_ids_to_name = {gene_id: gene_id for gene_id in adata.var_names}
-
-    for group_name in list(mdf.columns):
-        api_cluster_id = None
-        for original_label, mapped_id in ct_map.items():
-            if str(original_label) == str(group_name):
-                api_cluster_id = str(mapped_id)
-                break
-
-        if api_cluster_id is None:
+    for group_name in mdf.columns.tolist():
+        cluster_id = ct_map.get(str(group_name), "")
+        if not cluster_id:
             raise ValueError(
                 f"Internal inconsistency: Group name '{group_name}' from rank_genes_groups results "
                 f"was not found in the mapping generated from adata.obs['{cell_group_key}']. "
                 f"Ensure rank_genes_groups was run on the same cell grouping."
             )
-
         top_genes = mdf[group_name].values[: min(n_top_genes, len(mdf))]
-        # Filter out genes that aren't in the gene_ids_to_name dictionary
-        valid_genes = [gene for gene in top_genes if gene in gene_ids_to_name]
-        markers[api_cluster_id] = [gene_ids_to_name[gene] for gene in valid_genes]
+        markers[cluster_id] = [
+            gene_ids_to_name[gene] for gene in top_genes if gene in gene_ids_to_name
+        ]
 
     return markers

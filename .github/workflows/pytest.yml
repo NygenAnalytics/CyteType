@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ] # Or your default branch
+    branches: [ master ] # Or your default branch
   pull_request:
-    branches: [ main ] # Or your default branch
+    branches: [ master ] # Or your default branch
 
 jobs:
   test:
@@ -21,24 +21,22 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install uv
-      run: curl -LsSf https://astral.sh/uv/install.sh | sh
-      shell: bash
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v6
 
     - name: Install dependencies
-      run: ~/.local/bin/uv pip sync --all-extras # Installs dev dependencies too
-      # Or if uv is added to PATH: uv pip sync --all-extras
+      run: uv sync --locked --all-extras # Installs base and dev dependencies from uv.lock
       shell: bash
 
     - name: Run Mypy
-      run: ~/.local/bin/uv run mypy .
+      run: uv run mypy .
       shell: bash
 
     - name: Run Ruff Check
-      run: ~/.local/bin/uv run ruff check .
+      run: uv run ruff check .
       shell: bash
 
     - name: Run Pytest
-      run: ~/.local/bin/uv run pytest
+      run: uv run pytest
       shell: bash
     

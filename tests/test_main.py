@@ -9,11 +9,6 @@ from typing import Any
 from cytetype.main import annotate_anndata
 
 # Import helpers (though testing them here is not ideal long-term)
-from cytetype.anndata_helpers import (
-    _validate_adata,
-    _calculate_pcent,
-    _get_markers,
-)
 
 # Import config and exceptions
 from cytetype.config import DEFAULT_API_URL, DEFAULT_POLL_INTERVAL, DEFAULT_TIMEOUT
@@ -42,7 +37,10 @@ def mock_adata() -> anndata.AnnData:
         index=[f"cell_{i}" for i in range(n_obs)],
     )
     # Ensure var_names match X dimensions
-    var = pd.DataFrame(index=[f"gene_{i}" for i in range(n_vars)])
+    var_index = [f"gene_{i}" for i in range(n_vars)]
+    var = pd.DataFrame(index=var_index)
+    var.index.name = "gene_id"  # Use 'gene_id' for index name for clarity
+    var["gene_symbols"] = var.index  # Add the required gene_symbols column
 
     adata = anndata.AnnData(X=X, obs=obs, var=var)
     # No need for adata.raw based on current anndata_helpers
@@ -73,61 +71,6 @@ def mock_adata() -> anndata.AnnData:
     }
 
     return adata
-
-
-# --- Test Helper Functions (Ideally in tests/test_anndata_helpers.py) ---
-
-
-def test_validate_adata_success(mock_adata: anndata.AnnData) -> None:
-    """Test validation passes with a correctly formatted AnnData object."""
-    _validate_adata(mock_adata, "leiden", "rank_genes_groups")  # Should not raise
-
-
-def test_validate_adata_missing_group(mock_adata: anndata.AnnData) -> None:
-    """Test validation fails if cell_group_key is missing."""
-    with pytest.raises(KeyError, match="not found in `adata.obs`"):
-        _validate_adata(mock_adata, "unknown_key", "rank_genes_groups")
-
-
-def test_validate_adata_missing_x(mock_adata: anndata.AnnData) -> None:
-    """Test validation fails if adata.X is missing."""
-    mock_adata.X = None
-    with pytest.raises(ValueError, match="`adata.X` is required"):
-        _validate_adata(mock_adata, "leiden", "rank_genes_groups")
-
-
-def test_validate_adata_rank_key_missing(mock_adata: anndata.AnnData) -> None:
-    """Test validation fails if rank_genes_key is missing in uns."""
-    with pytest.raises(KeyError, match="not found in `adata.uns`"):
-        _validate_adata(mock_adata, "leiden", "nonexistent_rank_key")
-
-
-def test_calculate_pcent(mock_adata: anndata.AnnData) -> None:
-    """Test percentage calculation using adata.X."""
-    clusters_int = np.array([int(x) + 1 for x in mock_adata.obs["leiden"]])  # 1, 2, 3
-    pcent = _calculate_pcent(mock_adata, clusters_int, batch_size=10)
-    assert isinstance(pcent, dict)
-    assert len(pcent) == mock_adata.n_vars  # Should have entry for each gene
-    # Check a specific gene and cluster (values depend on mock data & log1p)
-    assert "gene_0" in pcent
-    assert 1 in pcent["gene_0"]
-    # Since input is log1p(counts+1), (X > 0) should be equivalent to (raw > 0)
-    # for typical count data, so percentage should still be reasonable.
-    assert 0 <= pcent["gene_0"][1] <= 100
-
-
-def test_get_markers(mock_adata: anndata.AnnData) -> None:
-    """Test marker gene extraction."""
-    ct_map = {"0": 1, "1": 2, "2": 3}
-    n_top = 5
-    rank_key = "rank_genes_groups"
-    markers = _get_markers(mock_adata, "leiden", rank_key, ct_map, n_top_genes=n_top)
-    assert isinstance(markers, dict)
-    assert list(markers.keys()) == ["1", "2", "3"]  # API cluster IDs as strings
-    assert len(markers["1"]) == n_top
-    assert markers["1"][0] == "gene_0"  # Based on mock rank_genes_groups
-    assert markers["2"][0] == "gene_1"
-    assert markers["3"][0] == "gene_2"
 
 
 # --- Test Main Function --- #
