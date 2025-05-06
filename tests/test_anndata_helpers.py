@@ -2,7 +2,6 @@ import pytest
 import anndata
 import numpy as np
 import pandas as pd
-from typing import Any
 
 # Import helpers to test
 from cytetype.anndata_helpers import (
@@ -12,6 +11,7 @@ from cytetype.anndata_helpers import (
 )
 
 # --- Fixtures ---
+
 
 # TODO: Consider if this fixture should be shared via conftest.py
 # if it's also needed in test_main.py or other files.
@@ -65,13 +65,16 @@ def mock_adata() -> anndata.AnnData:
 
     return adata
 
+
 # --- Test Helper Functions ---
+
 
 def test_validate_adata_success(mock_adata: anndata.AnnData) -> None:
     """Test validation passes with a correctly formatted AnnData object."""
     _validate_adata(
         mock_adata, "leiden", "rank_genes_groups", gene_symbols_col="gene_symbols"
     )  # Should not raise
+
 
 def test_validate_adata_missing_group(mock_adata: anndata.AnnData) -> None:
     """Test validation fails if cell_group_key is missing."""
@@ -83,6 +86,7 @@ def test_validate_adata_missing_group(mock_adata: anndata.AnnData) -> None:
             gene_symbols_col="gene_symbols",
         )
 
+
 def test_validate_adata_missing_x(mock_adata: anndata.AnnData) -> None:
     """Test validation fails if adata.X is missing."""
     mock_adata.X = None
@@ -90,6 +94,7 @@ def test_validate_adata_missing_x(mock_adata: anndata.AnnData) -> None:
         _validate_adata(
             mock_adata, "leiden", "rank_genes_groups", gene_symbols_col="gene_symbols"
         )
+
 
 def test_validate_adata_rank_key_missing(mock_adata: anndata.AnnData) -> None:
     """Test validation fails if rank_genes_key is missing in uns."""
@@ -100,6 +105,7 @@ def test_validate_adata_rank_key_missing(mock_adata: anndata.AnnData) -> None:
             "nonexistent_rank_key",
             gene_symbols_col="gene_symbols",
         )
+
 
 def test_calculate_pcent(mock_adata: anndata.AnnData) -> None:
     """Test percentage calculation using adata.X."""
@@ -112,7 +118,7 @@ def test_calculate_pcent(mock_adata: anndata.AnnData) -> None:
 
     pcent = _calculate_pcent(
         mock_adata,
-        clusters_str, # Pass list of strings
+        clusters_str,  # Pass list of strings
         gene_names=mock_adata.var_names.to_list(),
         batch_size=10,
     )
@@ -120,10 +126,11 @@ def test_calculate_pcent(mock_adata: anndata.AnnData) -> None:
     assert len(pcent) == mock_adata.n_vars  # Should have entry for each gene
     # Check a specific gene and cluster (values depend on mock data & log1p)
     assert "gene_0" in pcent
-    assert "1" in pcent["gene_0"] # Cluster IDs are strings '1', '2', '3'
+    assert "1" in pcent["gene_0"]  # Cluster IDs are strings '1', '2', '3'
     # Since input is log1p(counts+1), (X > 0) should be equivalent to (raw > 0)
     # for typical count data, so percentage should still be reasonable.
     assert 0 <= pcent["gene_0"]["1"] <= 100
+
 
 def test_get_markers(mock_adata: anndata.AnnData) -> None:
     """Test marker gene extraction."""
@@ -146,6 +153,7 @@ def test_get_markers(mock_adata: anndata.AnnData) -> None:
     assert markers["2"][0] == "gene_1"
     assert markers["3"][0] == "gene_2"
 
+
 # Add a test for validation failure due to rank_genes groupby mismatch
 def test_validate_adata_groupby_mismatch(mock_adata: anndata.AnnData) -> None:
     """Test validation fails if rank_genes_groups groupby mismatches cell_group_key."""
@@ -158,11 +166,12 @@ def test_validate_adata_groupby_mismatch(mock_adata: anndata.AnnData) -> None:
             mock_adata, "leiden", "rank_genes_groups", gene_symbols_col="gene_symbols"
         )
 
+
 # Add a test for _get_markers failure due to ct_map mismatch
 def test_get_markers_ct_map_mismatch(mock_adata: anndata.AnnData) -> None:
     """Test _get_markers fails if rank_genes group is not in ct_map."""
     # Use a ct_map that is missing a mapping for one of the groups ('2')
-    ct_map = {"0": "1", "1": "2"} # Missing mapping for group '2'
+    ct_map = {"0": "1", "1": "2"}  # Missing mapping for group '2'
     n_top = 5
     rank_key = "rank_genes_groups"
     with pytest.raises(ValueError, match="Internal inconsistency"):
@@ -173,4 +182,4 @@ def test_get_markers_ct_map_mismatch(mock_adata: anndata.AnnData) -> None:
             ct_map,
             gene_symbols_col="gene_symbols",
             n_top_genes=n_top,
-        ) 
+        )

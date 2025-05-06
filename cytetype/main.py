@@ -1,5 +1,4 @@
 import anndata
-import numpy as np
 import pandas as pd
 from typing import Any
 
@@ -183,9 +182,7 @@ def annotate_anndata(
         index=adata.obs.index,
     ).astype("category")
 
-    unannotated_clusters = {
-        x for x in clusters if x not in anno_map
-    }
+    unannotated_clusters = {x for x in clusters if x not in anno_map}
     if unannotated_clusters:
         logger.warning(
             f"No annotations received from API for cluster IDs: {unannotated_clusters}. Corresponding cells marked as 'Unknown Annotation'."

@@ -9,11 +9,6 @@ from typing import Any
 from cytetype.main import annotate_anndata
 
 # Import helpers (though testing them here is not ideal long-term)
-from cytetype.anndata_helpers import (
-    _validate_adata,
-    _calculate_pcent,
-    _get_markers,
-)
 
 # Import config and exceptions
 from cytetype.config import DEFAULT_API_URL, DEFAULT_POLL_INTERVAL, DEFAULT_TIMEOUT

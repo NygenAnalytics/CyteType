@@ -1,6 +1,5 @@
 import pytest
 import requests
-import time
 from unittest.mock import patch, MagicMock, call
 from typing import Any
 
@@ -8,8 +7,6 @@ from cytetype.client import submit_annotation_job, poll_for_results
 from cytetype.exceptions import CyteTypeAPIError, CyteTypeTimeoutError, CyteTypeJobError
 from cytetype.config import (
     DEFAULT_API_URL,
-    DEFAULT_POLL_INTERVAL,
-    DEFAULT_TIMEOUT,
 )
 
 # --- Test submit_annotation_job ---
@@ -33,7 +30,7 @@ def test_submit_annotation_job_success(mock_post: MagicMock) -> None:
         f"{DEFAULT_API_URL}/annotate",
         json=MOCK_QUERY,
         headers={"Content-Type": "application/json"},
-        timeout=60 # Added timeout to match the actual call
+        timeout=60,  # Added timeout to match the actual call
     )
 
 
@@ -97,6 +94,7 @@ def test_submit_annotation_job_with_model_config(mock_post: MagicMock) -> None:
     # import json # Need json to decode the string param
     # assert json.loads(kwargs["params"]["modelConfig"]) == model_config
 
+
 # --- Test poll_for_results ---
 
 MOCK_RESULT_PAYLOAD = {"annotations": [{"clusterId": "1", "annotation": "Type X"}]}
@@ -104,7 +102,7 @@ MOCK_RESULT_PAYLOAD = {"annotations": [{"clusterId": "1", "annotation": "Type X"
 MOCK_LOG_PAYLOAD = "Log line 1\nLog line 2"
 
 
-@patch("cytetype.client.time.sleep", return_value=None) # Prevent actual sleep
+@patch("cytetype.client.time.sleep", return_value=None)  # Prevent actual sleep
 @patch("cytetype.client.requests.get")
 def test_poll_for_results_success(mock_get: MagicMock, mock_sleep: MagicMock) -> None:
     """Test successful polling completion."""
@@ -126,23 +124,21 @@ def test_poll_for_results_success(mock_get: MagicMock, mock_sleep: MagicMock) ->
 
     # Update side_effect to include log response
     mock_get.side_effect = [
-        mock_response_pending, # First call to /retrieve
-        mock_response_logs,    # First call to /display_logs
-        mock_response_complete # Second call to /retrieve
+        mock_response_pending,  # First call to /retrieve
+        mock_response_logs,  # First call to /display_logs
+        mock_response_complete,  # Second call to /retrieve
     ]
 
-    result = poll_for_results(
-        MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5
-    )
+    result = poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5)
 
     assert result == MOCK_RESULT_PAYLOAD
     # Correct the expected URLs and add timeout arg
     retrieve_url = f"{DEFAULT_API_URL}/retrieve/{MOCK_JOB_ID}"
     logs_url = f"{DEFAULT_API_URL}/display_logs/{MOCK_JOB_ID}"
     expected_calls = [
-        call(retrieve_url, timeout=30), # First retrieve call
-        call(logs_url, timeout=10),     # Log call
-        call(retrieve_url, timeout=30), # Second retrieve call
+        call(retrieve_url, timeout=30),  # First retrieve call
+        call(logs_url, timeout=10),  # Log call
+        call(retrieve_url, timeout=30),  # Second retrieve call
     ]
     mock_get.assert_has_calls(expected_calls)
     # Check that sleep was called for initial delay and poll interval
@@ -152,7 +148,9 @@ def test_poll_for_results_success(mock_get: MagicMock, mock_sleep: MagicMock) ->
 
 @patch("cytetype.client.time.sleep", return_value=None)
 @patch("cytetype.client.requests.get")
-def test_poll_for_results_error_status(mock_get: MagicMock, mock_sleep: MagicMock) -> None:
+def test_poll_for_results_error_status(
+    mock_get: MagicMock, mock_sleep: MagicMock
+) -> None:
     """Test polling when API returns an 'error' status."""
     mock_response_error = MagicMock()
     mock_response_error.status_code = 200
@@ -163,9 +161,7 @@ def test_poll_for_results_error_status(mock_get: MagicMock, mock_sleep: MagicMoc
     mock_get.return_value = mock_response_error
 
     with pytest.raises(CyteTypeJobError, match="Server error: job failed"):
-        poll_for_results(
-            MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5
-        )
+        poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5)
     mock_get.assert_called_once()
     # Assert only the initial sleep(10) happened
     mock_sleep.assert_called_once_with(10)
@@ -178,15 +174,13 @@ def test_poll_for_results_timeout(mock_get: MagicMock, mock_sleep: MagicMock) ->
     mock_response_pending = MagicMock()
     mock_response_pending.status_code = 200
     mock_response_pending.json.return_value = {"status": "pending"}
-    mock_get.return_value = mock_response_pending # Always pending
+    mock_get.return_value = mock_response_pending  # Always pending
 
     poll_interval = 1
     timeout = 2
 
     with pytest.raises(CyteTypeTimeoutError, match="Timeout while fetching results"):
-        poll_for_results(
-            MOCK_JOB_ID, DEFAULT_API_URL, poll_interval, timeout
-        )
+        poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval, timeout)
 
     # Check it called sleep multiple times before timeout
     assert mock_sleep.call_count > 1
@@ -207,9 +201,7 @@ def test_poll_for_results_api_error(mock_get: MagicMock, mock_sleep: MagicMock) 
     mock_get.return_value = mock_response
 
     with pytest.raises(CyteTypeAPIError, match="Network error while fetching results"):
-        poll_for_results(
-            MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5
-        )
+        poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5)
     mock_get.assert_called_once()
     # Assert only the initial sleep(10) happened
     mock_sleep.assert_called_once_with(10)
@@ -217,14 +209,14 @@ def test_poll_for_results_api_error(mock_get: MagicMock, mock_sleep: MagicMock) 
 
 @patch("cytetype.client.time.sleep", return_value=None)
 @patch("cytetype.client.requests.get")
-def test_poll_for_results_connection_error(mock_get: MagicMock, mock_sleep: MagicMock) -> None:
+def test_poll_for_results_connection_error(
+    mock_get: MagicMock, mock_sleep: MagicMock
+) -> None:
     """Test polling failure due to connection error."""
     mock_get.side_effect = requests.exceptions.RequestException("Connection failed")
 
     with pytest.raises(CyteTypeAPIError, match="Network error while fetching results"):
-        poll_for_results(
-            MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5
-        )
+        poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5)
     mock_get.assert_called_once()
     # Assert only the initial sleep(10) happened
     mock_sleep.assert_called_once_with(10)
@@ -232,17 +224,21 @@ def test_poll_for_results_connection_error(mock_get: MagicMock, mock_sleep: Magi
 
 @patch("cytetype.client.time.sleep", return_value=None)
 @patch("cytetype.client.requests.get")
-def test_poll_for_results_invalid_json(mock_get: MagicMock, mock_sleep: MagicMock) -> None:
+def test_poll_for_results_invalid_json(
+    mock_get: MagicMock, mock_sleep: MagicMock
+) -> None:
     """Test polling failure due to invalid JSON response."""
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.side_effect = requests.exceptions.JSONDecodeError("msg", "doc", 0)
+    mock_response.json.side_effect = requests.exceptions.JSONDecodeError(
+        "msg", "doc", 0
+    )
     mock_get.return_value = mock_response
 
-    with pytest.raises(CyteTypeAPIError, match="Invalid response while fetching results"):
-        poll_for_results(
-            MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5
-        )
+    with pytest.raises(
+        CyteTypeAPIError, match="Invalid response while fetching results"
+    ):
+        poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5)
     mock_get.assert_called_once()
     # Assert only the initial sleep(10) happened
     mock_sleep.assert_called_once_with(10)
@@ -250,7 +246,9 @@ def test_poll_for_results_invalid_json(mock_get: MagicMock, mock_sleep: MagicMoc
 
 @patch("cytetype.client.time.sleep", return_value=None)
 @patch("cytetype.client.requests.get")
-def test_poll_for_results_missing_keys(mock_get: MagicMock, mock_sleep: MagicMock) -> None:
+def test_poll_for_results_missing_keys(
+    mock_get: MagicMock, mock_sleep: MagicMock
+) -> None:
     """Test polling failure due to missing keys in 'completed' response."""
     mock_response_complete = MagicMock()
     mock_response_complete.status_code = 200
@@ -258,10 +256,10 @@ def test_poll_for_results_missing_keys(mock_get: MagicMock, mock_sleep: MagicMoc
     mock_response_complete.json.return_value = {"status": "completed"}
     mock_get.return_value = mock_response_complete
 
-    with pytest.raises(CyteTypeAPIError, match="Invalid response while parsing results"):
-        poll_for_results(
-            MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5
-        )
+    with pytest.raises(
+        CyteTypeAPIError, match="Invalid response while parsing results"
+    ):
+        poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5)
     mock_get.assert_called_once()
     # Assert only the initial sleep(10) happened
-    mock_sleep.assert_called_once_with(10) 
+    mock_sleep.assert_called_once_with(10)
