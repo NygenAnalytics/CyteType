@@ -26,8 +26,8 @@ jobs:
       shell: bash
 
     - name: Install dependencies
-      run: ~/.local/bin/uv pip sync --extra dev pyproject.toml # Installs dev dependencies too
-      # Or if uv is added to PATH: uv pip sync --extra dev pyproject.toml
+      run: ~/.local/bin/uv pip install ".[dev]" # Installs dev dependencies too
+      # Or if uv is added to PATH: uv pip install ".[dev]"
       shell: bash
 
     - name: Run Mypy
