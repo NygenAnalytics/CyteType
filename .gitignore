@@ -14,3 +14,7 @@ wheels/
 
 .mypy_cache
 
+*.h5ad
+*checkpoint.ipynb
+*ipynb_checkpoints*
+*query.json
