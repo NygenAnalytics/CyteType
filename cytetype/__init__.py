@@ -1,3 +1,3 @@
-from .main import annotate_anndata
+from .main import CyteType
 
-__all__ = ["annotate_anndata"]
+__all__ = ["CyteType"]

@@ -5,8 +5,8 @@ import pandas as pd
 from unittest.mock import patch, MagicMock
 from typing import Any
 
-# Import the main function to test
-from cytetype.main import annotate_anndata
+# Import the main class to test
+from cytetype.main import CyteType
 
 # Import helpers (though testing them here is not ideal long-term)
 
@@ -73,15 +73,15 @@ def mock_adata() -> anndata.AnnData:
     return adata
 
 
-# --- Test Main Function --- #
+# --- Test Main Class --- #
 
 
 @patch("cytetype.main.submit_annotation_job")
 @patch("cytetype.main.poll_for_results")
-def test_annotate_anndata_success(
+def test_cytetype_success(
     mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
 ) -> None:
-    """Test the main annotation function end-to-end with mocks."""
+    """Test the CyteType class end-to-end with mocks."""
     job_id = "mock_job_success"
     mock_submit.return_value = job_id
     mock_result: dict[str, list[dict[str, str]]] = {
@@ -97,13 +97,15 @@ def test_annotate_anndata_success(
     result_prefix = "TestCyteType"
     rank_key = "rank_genes_groups"  # Use default key
 
-    adata_result = annotate_anndata(
+    # Create CyteType instance and run annotation
+    cytetype = CyteType(
         mock_adata,
         cell_group_key=group_key,
         rank_genes_key=rank_key,
         results_key_added=result_prefix,
         n_top_genes=5,
     )
+    adata_result = cytetype.run()
 
     # Check mocks called correctly
     mock_submit.assert_called_once()
@@ -125,15 +127,15 @@ def test_annotate_anndata_success(
 
     obs_key = f"{result_prefix}_{group_key}"
     assert obs_key in adata_result.obs
-    assert pd.api.types.is_categorical_dtype(adata_result.obs[obs_key])
+    assert isinstance(adata_result.obs[obs_key].dtype, pd.CategoricalDtype)
 
     # Check annotation mapping
     expected_annotations = []
-    ct_map = {"0": 1, "1": 2, "2": 3}
-    anno_map = {1: "Cell Type A", 2: "Cell Type B", 3: "Cell Type C"}
+    ct_map = {"0": "1", "1": "2", "2": "3"}
+    anno_map = {"1": "Cell Type A", "2": "Cell Type B", "3": "Cell Type C"}
     for cluster_label in mock_adata.obs[group_key]:
-        cluster_int = ct_map[cluster_label]
-        expected_annotations.append(anno_map[cluster_int])
+        cluster_id = ct_map[cluster_label]
+        expected_annotations.append(anno_map[cluster_id])
 
     pd.testing.assert_series_equal(
         adata_result.obs[obs_key],
@@ -143,31 +145,33 @@ def test_annotate_anndata_success(
 
 
 @patch("cytetype.main.submit_annotation_job")
-def test_annotate_anndata_submit_fails(
+def test_cytetype_submit_fails(
     mock_submit: MagicMock, mock_adata: anndata.AnnData
 ) -> None:
-    """Test main function when submission fails (exception propagates)."""
+    """Test CyteType class when submission fails (exception propagates)."""
     mock_submit.side_effect = CyteTypeAPIError("Submit failed")
 
+    cytetype = CyteType(mock_adata, cell_group_key="leiden")
     with pytest.raises(CyteTypeAPIError, match="Submit failed"):
-        annotate_anndata(mock_adata, cell_group_key="leiden")
+        cytetype.run()
 
 
 @patch("cytetype.main.submit_annotation_job", return_value="mock_job_poll_fail")
 @patch("cytetype.main.poll_for_results")
-def test_annotate_anndata_poll_fails(
+def test_cytetype_poll_fails(
     mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
 ) -> None:
-    """Test main function when polling fails (exception propagates)."""
+    """Test CyteType class when polling fails (exception propagates)."""
     mock_poll.side_effect = CyteTypeTimeoutError("Poll timed out")
 
+    cytetype = CyteType(mock_adata, cell_group_key="leiden")
     with pytest.raises(CyteTypeTimeoutError, match="Poll timed out"):
-        annotate_anndata(mock_adata, cell_group_key="leiden")
+        cytetype.run()
 
 
 @patch("cytetype.main.submit_annotation_job", return_value="mock_job_custom_url")
 @patch("cytetype.main.poll_for_results")
-def test_annotate_anndata_custom_url_and_params(
+def test_cytetype_custom_url_and_params(
     mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
 ) -> None:
     """Test using a custom API URL and non-default poll/timeout params."""
@@ -178,9 +182,8 @@ def test_annotate_anndata_custom_url_and_params(
     mock_result: dict[str, list[Any]] = {"annotations": []}  # Added type hint
     mock_poll.return_value = mock_result
 
-    annotate_anndata(
-        mock_adata,
-        cell_group_key="leiden",
+    cytetype = CyteType(mock_adata, cell_group_key="leiden")
+    cytetype.run(
         api_url=custom_url,
         poll_interval_seconds=custom_poll,
         timeout_seconds=custom_timeout,
@@ -202,7 +205,7 @@ def test_annotate_anndata_custom_url_and_params(
 
 @patch("cytetype.main.submit_annotation_job")
 @patch("cytetype.main.poll_for_results")
-def test_annotate_anndata_custom_rank_key(
+def test_cytetype_custom_rank_key(
     mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
 ) -> None:
     """Test using a custom rank_genes_key."""
@@ -213,9 +216,10 @@ def test_annotate_anndata_custom_rank_key(
     custom_rank_key = "custom_rank_genes"
 
     # Run annotation using the custom key
-    annotate_anndata(
+    cytetype = CyteType(
         mock_adata, cell_group_key="leiden", rank_genes_key=custom_rank_key
     )
+    cytetype.run()
 
     # Check that _get_markers (called internally) would have used the correct key
     # We can check the markerGenes part of the query submitted

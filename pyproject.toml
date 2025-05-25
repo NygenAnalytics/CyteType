@@ -1,6 +1,6 @@
 [project]
 name = "cytetype"
-version = "0.1.4"
+version = "0.2.0"
 description = "Python client for automated cell type annotation of single-cell RNA-seq data."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -8,6 +8,7 @@ dependencies = [
     "anndata>=0.11.4",
     "loguru>=0.7.3",
     "requests>=2.32.3",
+    "pydantic>=2.0.0",
 ]
 authors = [
     {name = "Parashar Dhapola", email = "parashar@nygen.io"}
@@ -22,9 +23,11 @@ Repository = "https://github.com/NygenAnalytics/CyteType"
 
 [dependency-groups]
 dev = [
+    "jupyterlab>=4.4.2",
     "mypy>=1.15.0",
     "pytest>=8.3.5",
     "ruff>=0.11.7",
+    "scanpy>=1.11.1",
     "types-requests>=2.32.0.20250328",
 ]
 

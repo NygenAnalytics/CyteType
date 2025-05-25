@@ -133,12 +133,12 @@ def test_poll_for_results_success(mock_get: MagicMock, mock_sleep: MagicMock) ->
 
     assert result == MOCK_RESULT_PAYLOAD
     # Correct the expected URLs and add timeout arg
-    retrieve_url = f"{DEFAULT_API_URL}/retrieve/{MOCK_JOB_ID}"
-    logs_url = f"{DEFAULT_API_URL}/display_logs/{MOCK_JOB_ID}"
+    results_url = f"{DEFAULT_API_URL}/results/{MOCK_JOB_ID}"
+    logs_url = f"{DEFAULT_API_URL}/logs/{MOCK_JOB_ID}"
     expected_calls = [
-        call(retrieve_url, timeout=30),  # First retrieve call
+        call(results_url, timeout=30),  # First results call
         call(logs_url, timeout=10),  # Log call
-        call(retrieve_url, timeout=30),  # Second retrieve call
+        call(results_url, timeout=30),  # Second results call
     ]
     mock_get.assert_has_calls(expected_calls)
     # Check that sleep was called for initial delay and poll interval

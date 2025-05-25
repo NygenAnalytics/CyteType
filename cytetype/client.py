@@ -7,22 +7,25 @@ from .exceptions import CyteTypeAPIError, CyteTypeTimeoutError, CyteTypeJobError
 
 
 def submit_annotation_job(
-    query: dict[str, Any],
+    payload: dict[str, Any],
     api_url: str,
+    extra_headers: dict[str, Any] | None = None,
     model_config: list[dict[str, Any]] | None = None,
 ) -> str:
     """Submits the annotation job to the API and returns the job ID."""
 
     submit_url = f"{api_url}/annotate"
     logger.debug(f"Submitting annotation job to {submit_url}")
+    
+    # Add model_config to payload if provided
+    if model_config is not None:
+        payload = payload.copy()  # Don't modify the original payload
+        payload["modelConfig"] = model_config
+    
     try:
         headers = {"Content-Type": "application/json"}
-
-        payload = (
-            query.copy()
-        )  # Create a copy to avoid modifying the original query dict
-        if model_config:
-            payload["modelConfig"] = model_config
+        if extra_headers:
+            headers.update(extra_headers)
 
         response = requests.post(submit_url, json=payload, headers=headers, timeout=60)
 
@@ -58,10 +61,10 @@ def poll_for_results(
 
     time.sleep(10)  # Initial delay before first poll
 
-    retrieve_url = f"{api_url}/retrieve/{job_id}"
-    logs_url = f"{api_url}/display_logs/{job_id}"  # Added log URL
-    logger.debug(f"Polling for results for job {job_id} at {retrieve_url}")
-    logger.debug(f"Fetching logs for job {job_id} from {logs_url}")  # Added log message
+    results_url = f"{api_url}/results/{job_id}"
+    logs_url = f"{api_url}/logs/{job_id}"
+    logger.debug(f"Polling for results for job {job_id} at {results_url}")
+    logger.debug(f"Fetching logs for job {job_id} from {logs_url}")
     start_time = time.time()
     last_logs = ""  # Initialize variable to store last fetched logs
 
@@ -74,7 +77,7 @@ def poll_for_results(
             f"Polling attempt for job {job_id}. Elapsed time: {elapsed_time:.1f}s"
         )
         try:
-            response = requests.get(retrieve_url, timeout=30)
+            response = requests.get(results_url, timeout=30)
             response.raise_for_status()
             data = response.json()
             status = data.get("status")
