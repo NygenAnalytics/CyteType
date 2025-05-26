@@ -1,6 +1,6 @@
 [project]
 name = "cytetype"
-version = "0.2.0"
+dynamic = ["version"]
 description = "Python client for automated cell type annotation of single-cell RNA-seq data."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -9,6 +9,7 @@ dependencies = [
     "loguru>=0.7.3",
     "requests>=2.32.3",
     "pydantic>=2.0.0",
+    "session-info>=1.0.1",
 ]
 authors = [
     {name = "Parashar Dhapola", email = "parashar@nygen.io"}
@@ -38,6 +39,8 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = {find = {}}
 
+[tool.setuptools.dynamic]
+version = {attr = "cytetype.__version__"}
 
 [tool.mypy]
 strict = false
