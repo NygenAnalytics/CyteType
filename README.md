@@ -2,13 +2,10 @@
 
 <p align="left">
   <!-- GitHub Actions CI Badge -->
-  <a href="https://github.com/NygenAnalytics/CyteType/actions/workflows/publish.yml">
-    <img src="https://github.com/NygenAnalytics/CyteType/actions/workflows/publish.yml/badge.svg" alt="CI Status">
+  <a href="https://github.com/NygenAnalytics/cytetype/actions/workflows/publish.yml">
+    <img src="https://github.com/NygenAnalytics/cytetype/actions/workflows/publish.yml/badge.svg" alt="CI Status">
   </a>
-  <a href="https://pypi.org/project/cytetype/">
-    <img src="https://img.shields.io/pypi/v/cytetype.svg" alt="PyPI version">
-  </a>
-  <a href="https://github.com/NygenAnalytics/CyteType/blob/main/LICENSE">
+  <a href="https://github.com/NygenAnalytics/cytetype/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg" alt="License: CC BY-NC-SA 4.0">
   </a>
   <img src="https://img.shields.io/badge/python-≥3.12-blue.svg" alt="Python Version">
@@ -16,7 +13,7 @@
 
 ---
 
-**CyteType** is a Python package for automated cell type annotation of single-cell RNA-seq data.
+**CyteType** is a Python package for detailed characterization of clusters from single-cell RNA-seq data.
 
 ## Quick Start
 
@@ -30,8 +27,8 @@ adata = anndata.read_h5ad("path/to/your/data.h5ad")
 sc.tl.rank_genes_groups(adata, groupby='leiden_clusters', method='t-test', key_added='rank_genes_leiden')
 
 # Annotate cell types
-cytetype_annotator = cytetype.CyteType(adata, cell_group_key='leiden_clusters', rank_genes_key='rank_genes_leiden')
-adata = cytetype_annotator.run(
+annotator = cytetype.CyteType(adata, cell_group_key='leiden_clusters', rank_genes_key='rank_genes_leiden')
+adata = annotator.run(
     bio_context={
         'organisms': ['Homo sapiens'],
         'tissues': ['Brain'],
@@ -40,12 +37,12 @@ adata = cytetype_annotator.run(
 )
 
 # View results
-print(adata.obs.CyteType_leiden_clusters)
+print(adata.obs.cytetype_leiden_clusters)
 ```
 
 ## Example Report
 
-CyteType generates comprehensive annotation reports with detailed justifications for each cell type assignment. You can see an example of the report structure and analysis depth at: [Hosted Report](https://nygen-labs--cell-annotation-agent-fastapi-app.modal.run/report/97ba2a69-ccfa-4b57-8614-746ce2024333)
+CyteType generates comprehensive annotation reports with detailed justifications for each cell type assignment. You can see an example of the report structure and analysis depth at: [Hosted Report](https://cytetype.nygen.io/report/97ba2a69-ccfa-4b57-8614-746ce2024333)
 
 The report includes:
 - **Detailed cluster annotations** with confidence scores
@@ -57,7 +54,7 @@ The report includes:
 
 *   **Seamless integration** with `AnnData` objects
 *   **Type-safe configuration** using Pydantic models
-*   **Configurable LLM support** for annotation (optional)
+*   **Configurable LLM support**  (optional)
 
 ## Installation
 
@@ -74,7 +71,7 @@ The `CyteType` class separates expensive data preparation from API calls, making
 ```python
 import anndata
 import scanpy as sc
-import cytetype
+from cytetype import CyteType
 
 # --- Preprocessing ---
 adata = anndata.read_h5ad("path/to/your/data.h5ad")
@@ -87,14 +84,14 @@ sc.tl.leiden(adata, key_added='leiden_clusters')
 sc.tl.rank_genes_groups(adata, groupby='leiden_clusters', method='t-test', key_added='rank_genes_leiden')
 
 # --- Initialize CyteType ---
-cytetype_annotator = cytetype.CyteType(
+annotator = CyteType(
     adata,
     cell_group_key='leiden_clusters',
     rank_genes_key='rank_genes_leiden'
 )
 
 # --- Run annotation ---
-adata = cytetype_annotator.run(
+adata = annotator.run(
     bio_context={
         'organisms': ['Homo sapiens'],
         'tissues': ['Brain', 'Nervous system'],
@@ -104,8 +101,8 @@ adata = cytetype_annotator.run(
 )
 
 # Access annotations
-print(adata.obs.CyteType_leiden_clusters)
-print(adata.uns['CyteType_results'])
+print(adata.obs.cytetype_leiden_clusters)
+print(adata.uns['cytetype_results'])
 ```
 
 ## Advanced: Configuring the Annotation Model
@@ -116,10 +113,10 @@ The currently supported providers are: `google`, `openai`, `xai`, `anthropic`, a
 
 ```python
 # Initialize once
-cytetype_annotator = cytetype.CyteType(adata, cell_group_key='leiden_clusters')
+annotator = CyteType(adata, cell_group_key='leiden_clusters')
 
 # Run annotation with custom model
-adata = cytetype_annotator.run(
+adata = annotator.run(
     bio_context={
         'organisms': ['Homo sapiens'],
         'tissues': ['Brain']
@@ -140,7 +137,7 @@ To set up for development:
 
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/NygenAnalytics/CyteType.git
+    git clone https://github.com/NygenAnalytics/cytetype.git
     cd cytetype
     ```
 2.  Install dependencies using `uv` (includes development tools):
