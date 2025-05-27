@@ -78,9 +78,7 @@ def test_submit_annotation_job_with_model_config(mock_post: MagicMock) -> None:
         }
     ]
 
-    job_id = submit_job(
-        MOCK_QUERY, DEFAULT_API_URL, model_config=model_config
-    )
+    job_id = submit_job(MOCK_QUERY, DEFAULT_API_URL, model_config=model_config)
 
     assert job_id == MOCK_JOB_ID
     mock_post.assert_called_once()
@@ -267,6 +265,7 @@ def test_poll_for_results_missing_keys(
 
 # --- Test auth_token functionality ---
 
+
 @patch("cytetype.client.requests.post")
 def test_submit_job_with_auth_token(mock_post: MagicMock) -> None:
     """Test submit_job with auth_token includes Bearer token in headers."""
@@ -283,18 +282,20 @@ def test_submit_job_with_auth_token(mock_post: MagicMock) -> None:
     args, kwargs = mock_post.call_args
     assert args[0] == f"{DEFAULT_API_URL}/annotate"
     assert kwargs["json"] == MOCK_QUERY
-    
+
     # Check that Authorization header is included
     expected_headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {auth_token}"
+        "Authorization": f"Bearer {auth_token}",
     }
     assert kwargs["headers"] == expected_headers
 
 
 @patch("cytetype.client.time.sleep", return_value=None)
 @patch("cytetype.client.requests.get")
-def test_poll_for_results_with_auth_token(mock_get: MagicMock, mock_sleep: MagicMock) -> None:
+def test_poll_for_results_with_auth_token(
+    mock_get: MagicMock, mock_sleep: MagicMock
+) -> None:
     """Test poll_for_results with auth_token includes Bearer token in headers."""
     mock_response_complete = MagicMock(spec=requests.Response)
     mock_response_complete.status_code = 200
@@ -305,10 +306,12 @@ def test_poll_for_results_with_auth_token(mock_get: MagicMock, mock_sleep: Magic
     mock_get.return_value = mock_response_complete
 
     auth_token = "test-bearer-token-456"
-    result = poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5, auth_token=auth_token)
+    result = poll_for_results(
+        MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5, auth_token=auth_token
+    )
 
     assert result == MOCK_RESULT_PAYLOAD
-    
+
     # Check that Authorization header is included in the call
     results_url = f"{DEFAULT_API_URL}/results/{MOCK_JOB_ID}"
     expected_headers = {"Authorization": f"Bearer {auth_token}"}

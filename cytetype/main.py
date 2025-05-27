@@ -7,22 +7,30 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from .config import logger, DEFAULT_API_URL, DEFAULT_POLL_INTERVAL, DEFAULT_TIMEOUT
 from .client import submit_job, poll_for_results
-from .anndata_helpers import _validate_adata, _calculate_pcent, _get_markers, _aggregate_metadata
+from .anndata_helpers import (
+    _validate_adata,
+    _calculate_pcent,
+    _get_markers,
+    _aggregate_metadata,
+)
 
 __all__ = ["CyteType", "BioContext", "ModelConfig"]
 
+
 class BioContext(BaseModel):
     """Biological context information for the data."""
+
     model_config = ConfigDict(populate_by_name=True)
-    
+
     studyContext: str = Field(default="")
     clusterContext: dict[str, dict[str, dict[str, int]]] = Field(default_factory=dict)
 
 
 class ModelConfig(BaseModel):
     """Configuration for the large language model to be used."""
+
     model_config = ConfigDict(populate_by_name=True)
-    
+
     provider: str
     name: str | None = None
     api_key: str | None = Field(default=None, alias="apiKey")
@@ -31,7 +39,7 @@ class ModelConfig(BaseModel):
 
 class CyteType:
     """CyteType class for characterizing clusters from single-cell RNA-seq data.
-    
+
     This class provides an object-oriented interface for cluster characterization using the CyteType API.
     The expensive data preparation steps (validation, expression percentage calculation, and marker
     gene extraction) are performed during initialization, allowing for efficient reuse when making
@@ -93,7 +101,9 @@ class CyteType:
             str(x): str(n + 1)
             for n, x in enumerate(sorted(adata.obs[group_key].unique().tolist()))
         }
-        self.clusters = [self.cluster_map[str(x)] for x in adata.obs[group_key].values.tolist()]
+        self.clusters = [
+            self.cluster_map[str(x)] for x in adata.obs[group_key].values.tolist()
+        ]
 
         logger.info("Calculating expression percentages.")
         self.expression_percentages = _calculate_pcent(
@@ -166,10 +176,9 @@ class CyteType:
         api_url = api_url.rstrip("/")
 
         bio_context = BioContext(
-            studyContext=study_context,
-            clusterContext=self.group_metadata
+            studyContext=study_context, clusterContext=self.group_metadata
         ).model_dump(by_alias=True)
-        
+
         # Process model config using Pydantic model
         model_config_list = None
         if model_config is not None:
@@ -190,15 +199,23 @@ class CyteType:
                 json.dump(query, f)
 
         # Submit job and poll for results
-        job_id = submit_job(query, api_url, model_config=model_config_list, auth_token=auth_token)
+        job_id = submit_job(
+            query, api_url, model_config=model_config_list, auth_token=auth_token
+        )
         logger.info(f"Waiting for results for job ID: {job_id}")
-        
+
         # Log the report URL that updates automatically
         report_url = f"{api_url}/report/{job_id}"
-        logger.info(f"View the automatically updating visualization report at: {report_url}")
-        
+        logger.info(
+            f"View the automatically updating visualization report at: {report_url}"
+        )
+
         result = poll_for_results(
-            job_id, api_url, poll_interval_seconds, timeout_seconds, auth_token=auth_token
+            job_id,
+            api_url,
+            poll_interval_seconds,
+            timeout_seconds,
+            auth_token=auth_token,
         )
 
         # Store results in AnnData object
@@ -213,12 +230,19 @@ class CyteType:
             for item in result.get("annotations", [])
         }
         self.adata.obs[f"{self.results_prefix}_{self.group_key}"] = pd.Series(
-            [annotation_map.get(cluster_id, "Unknown Annotation") for cluster_id in self.clusters],
+            [
+                annotation_map.get(cluster_id, "Unknown Annotation")
+                for cluster_id in self.clusters
+            ],
             index=self.adata.obs.index,
         ).astype("category")
 
         # Check for unannotated clusters
-        unannotated_clusters = {cluster_id for cluster_id in self.clusters if cluster_id not in annotation_map}
+        unannotated_clusters = {
+            cluster_id
+            for cluster_id in self.clusters
+            if cluster_id not in annotation_map
+        }
         if unannotated_clusters:
             logger.warning(
                 f"No annotations received from API for cluster IDs: {unannotated_clusters}. "

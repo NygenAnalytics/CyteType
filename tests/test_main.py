@@ -217,9 +217,7 @@ def test_cytetype_custom_rank_key(
     custom_rank_key = "custom_rank_genes"
 
     # Run annotation using the custom key
-    cytetype = CyteType(
-        mock_adata, group_key="leiden", rank_key=custom_rank_key
-    )
+    cytetype = CyteType(mock_adata, group_key="leiden", rank_key=custom_rank_key)
     cytetype.run(study_context="Test study context")
 
     # Check that _get_markers (called internally) would have used the correct key
@@ -251,7 +249,7 @@ def test_cytetype_with_auth_token(
     mock_poll.return_value = mock_result
 
     auth_token = "test-bearer-token-main"
-    
+
     cytetype = CyteType(mock_adata, group_key="leiden")
     cytetype.run(study_context="Test study context", auth_token=auth_token)
 
@@ -273,4 +271,4 @@ def test_cytetype_with_auth_token(
 # - Add tests specifically for cytetype/client.py (e.g., more nuanced API responses)
 # - Test cases where _get_markers raises ValueError (e.g., group mismatch)
 # - Test case where API result format is invalid (should raise CyteTypeAPIError from poll_for_results)
-# - Test case for annotation processing error (e.g., non-integer clusterId in response) 
+# - Test case for annotation processing error (e.g., non-integer clusterId in response)
