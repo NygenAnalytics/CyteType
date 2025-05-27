@@ -10,6 +10,7 @@ dependencies = [
     "requests>=2.32.3",
     "pydantic>=2.0.0",
     "session-info>=1.0.1",
+    "python-dotenv>=1.1.0",
 ]
 authors = [
     {name = "Parashar Dhapola", email = "parashar@nygen.io"}

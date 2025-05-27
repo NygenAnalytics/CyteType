@@ -13,7 +13,7 @@
 
 ---
 
-**CyteType** is a Python package for detailed characterization of clusters from single-cell RNA-seq data.
+**CyteType** is a Python package for automated cell type annotation of single-cell RNA-seq clusters using large language models.
 
 ## Quick Start
 
@@ -24,143 +24,165 @@ import cytetype
 
 # Load and preprocess your data
 adata = anndata.read_h5ad("path/to/your/data.h5ad")
-sc.tl.rank_genes_groups(adata, groupby='leiden_clusters', method='t-test', key_added='rank_genes_leiden')
+sc.pp.normalize_total(adata, target_sum=1e4)
+sc.pp.log1p(adata)
+sc.tl.leiden(adata, key_added='leiden')
+sc.tl.rank_genes_groups(adata, groupby='leiden', method='t-test')
 
-# Annotate cell types
-annotator = cytetype.CyteType(adata, cell_group_key='leiden_clusters', rank_genes_key='rank_genes_leiden')
+# Initialize CyteType (performs data preparation)
+annotator = cytetype.CyteType(adata, group_key='leiden')
+
+# Run annotation
 adata = annotator.run(
-    bio_context={
-        'organisms': ['Homo sapiens'],
-        'tissues': ['Brain'],
-        'diseases': ['Alzheimer disease']
-    }
+    study_context="Human brain tissue from Alzheimer's disease patients"
 )
 
 # View results
-print(adata.obs.cytetype_leiden_clusters)
+print(adata.obs.cytetype_leiden)
 ```
-
-## Example Report
-
-CyteType generates comprehensive annotation reports with detailed justifications for each cell type assignment. You can see an example of the report structure and analysis depth at: [Hosted Report](https://cytetype.nygen.io/report/97ba2a69-ccfa-4b57-8614-746ce2024333)
-
-The report includes:
-- **Detailed cluster annotations** with confidence scores
-- **Marker gene analysis** and supporting evidence
-- **Alternative annotations** and conflicting markers
-- **Biological justifications** for each cell type assignment
-
-## Key Features
-
-*   **Seamless integration** with `AnnData` objects
-*   **Type-safe configuration** using Pydantic models
-*   **Configurable LLM support**  (optional)
 
 ## Installation
 
-You can install CyteType using `pip` or `uv`:
-
 ```bash
 pip install cytetype
+# or
+uv add cytetype
 ```
 
-## Usage
+## How It Works
 
-The `CyteType` class separates expensive data preparation from API calls, making it efficient for multiple annotation requests:
+CyteType uses a two-step process:
+
+1. **Data Preparation** (during `__init__`): Validates data, calculates expression percentages, and extracts marker genes
+2. **API Annotation** (during `run()`): Sends data to CyteType API for LLM-powered cell type annotation
+
+This design allows efficient reuse when making multiple annotation requests with different parameters.
+
+## Basic Usage
+
+### Required Preprocessing
+
+Your `AnnData` object must have:
+- Log-normalized expression data in `adata.X`
+- Cluster labels in `adata.obs` 
+- Differential expression results from `sc.tl.rank_genes_groups`
 
 ```python
-import anndata
 import scanpy as sc
-from cytetype import CyteType
 
-# --- Preprocessing ---
-adata = anndata.read_h5ad("path/to/your/data.h5ad")
-
+# Standard preprocessing
 sc.pp.normalize_total(adata, target_sum=1e4)
 sc.pp.log1p(adata)
-# ... other steps like HVG selection, scaling, PCA, neighbors ...
 
-sc.tl.leiden(adata, key_added='leiden_clusters')
-sc.tl.rank_genes_groups(adata, groupby='leiden_clusters', method='t-test', key_added='rank_genes_leiden')
+# Clustering
+sc.tl.leiden(adata, key_added='clusters')
 
-# --- Initialize CyteType ---
-annotator = CyteType(
-    adata,
-    cell_group_key='leiden_clusters',
-    rank_genes_key='rank_genes_leiden'
-)
-
-# --- Run annotation ---
-adata = annotator.run(
-    bio_context={
-        'organisms': ['Homo sapiens'],
-        'tissues': ['Brain', 'Nervous system'],
-        'diseases': ['Alzheimer disease']
-    },
-    n_top_genes=50
-)
-
-# Access annotations
-print(adata.obs.cytetype_leiden_clusters)
-print(adata.uns['cytetype_results'])
+# Differential expression (required)
+sc.tl.rank_genes_groups(adata, groupby='clusters', method='t-test')
 ```
 
-## Advanced: Configuring the Annotation Model
-
-You can specify different LLM providers and models using the `model_config` parameter. **Important:** Make sure to use an LLM that supports tool use, as CyteType relies on function calling capabilities for accurate annotations.
-
-The currently supported providers are: `google`, `openai`, `xai`, `anthropic`, and `groq`.
+### Annotation
 
 ```python
-# Initialize once
-annotator = CyteType(adata, cell_group_key='leiden_clusters')
+from cytetype import CyteType
 
-# Run annotation with custom model
+# Initialize (data preparation happens here)
+annotator = CyteType(adata, group_key='clusters')
+
+# Run annotation
 adata = annotator.run(
-    bio_context={
-        'organisms': ['Homo sapiens'],
-        'tissues': ['Brain']
-    },
+    study_context="Mouse brain cortex, postnatal development"
+)
+
+# Results are stored in:
+# - adata.obs.cytetype_clusters (cell type annotations)
+# - adata.uns['cytetype_results'] (full API response)
+```
+
+## Configuration Options
+
+### Initialization Parameters
+
+```python
+annotator = CyteType(
+    adata,
+    group_key='leiden',                    # Required: cluster column name
+    rank_key='rank_genes_groups',          # DE results key (default)
+    gene_symbols_column='gene_symbols',    # Gene symbols column (default)
+    n_top_genes=50,                        # Top marker genes per cluster
+    results_prefix='cytetype'              # Prefix for result columns
+)
+```
+
+### Custom LLM Configuration
+
+```python
+# Use your own API key
+adata = annotator.run(
+    study_context="Human PBMC from COVID-19 patients",
     model_config=[{
         'provider': 'openai',
         'name': 'gpt-4o',
-        'apiKey': 'YOUR_API_KEY'
+        'apiKey': 'your-api-key'
     }]
 )
 ```
 
-**Important:** Handle API keys securely using environment variables or secrets management tools.
+Supported providers: `openai`, `anthropic`, `google`, `xai`, `groq`
+
+## Example Report
+
+View a sample annotation report: [CyteType Report](https://cytetype.nygen.io/report/97ba2a69-ccfa-4b57-8614-746ce2024333)
+
+The report includes:
+- Detailed cell type annotations with confidence scores
+- Marker gene analysis and supporting evidence
+- Alternative annotations and biological justifications
+
+## Advanced Usage
+
+### Multiple Annotations
+
+```python
+# Initialize once, run multiple times
+annotator = CyteType(adata, group_key='leiden')
+
+# Different contexts
+adata1 = annotator.run(study_context="Healthy tissue")
+adata2 = annotator.run(study_context="Disease tissue")
+```
+
+### Custom Gene Symbols
+
+```python
+# If gene symbols are in a different column
+annotator = CyteType(
+    adata, 
+    group_key='leiden',
+    gene_symbols_column='gene_name'  # instead of default 'gene_symbols'
+)
+```
 
 ## Development
 
-To set up for development:
+### Setup
 
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/NygenAnalytics/cytetype.git
-    cd cytetype
-    ```
-2.  Install dependencies using `uv` (includes development tools):
-    ```bash
-    pip install uv # Install uv if you don't have it
-    uv pip sync --all-extras
-    ```
-3.  Install the package in editable mode:
-    ```bash
-    uv run pip install -e .
-    ```
+```bash
+git clone https://github.com/NygenAnalytics/cytetype.git
+cd cytetype
+uv sync --all-extras
+uv run pip install -e .
+```
 
-### Running Checks and Tests
+### Testing
 
-*   **Mypy (Type Checking):** `uv run mypy .`
-*   **Ruff (Linting & Formatting):** `uv run ruff check .` and `uv run ruff format .`
-*   **Pytest (Unit Tests):** `uv run pytest`
-
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request.
+```bash
+uv run pytest              # Run tests
+uv run ruff check .        # Linting
+uv run ruff format .       # Formatting
+uv run mypy .              # Type checking
+```
 
 ## License
 
-This project is licensed under the CC BY-NC-SA 4.0 License - see the [LICENSE](LICENSE) file for details.
+Licensed under CC BY-NC-SA 4.0 - see [LICENSE](LICENSE) for details.

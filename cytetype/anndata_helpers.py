@@ -132,7 +132,7 @@ def _aggregate_metadata(
         where percentage is the percentage of cells in that group having that value
         (only values >min_percentage are included)
     """
-    grouped_data = adata.obs.groupby(group_key)
+    grouped_data = adata.obs.groupby(group_key, observed=False)
     column_distributions: dict[str, dict[str, dict[str, int]]] = {}
 
     # Process each column in adata.obs

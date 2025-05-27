@@ -129,6 +129,11 @@ class CyteType:
                 group_key=self.group_key,
                 min_percentage=10,
             )
+            # Replace keys in group_metadata using cluster_map
+            self.group_metadata = {
+                self.cluster_map.get(str(key), str(key)): value
+                for key, value in self.group_metadata.items()
+            }
         else:
             self.group_metadata = {}
 
@@ -238,11 +243,12 @@ class CyteType:
         ).astype("category")
 
         # Check for unannotated clusters
-        unannotated_clusters = {
+        unannotated_clusters = set([
             cluster_id
             for cluster_id in self.clusters
             if cluster_id not in annotation_map
-        }
+        ])
+        
         if unannotated_clusters:
             logger.warning(
                 f"No annotations received from API for cluster IDs: {unannotated_clusters}. "
