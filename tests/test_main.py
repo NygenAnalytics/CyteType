@@ -76,7 +76,7 @@ def mock_adata() -> anndata.AnnData:
 # --- Test Main Class --- #
 
 
-@patch("cytetype.main.submit_annotation_job")
+@patch("cytetype.main.submit_job")
 @patch("cytetype.main.poll_for_results")
 def test_cytetype_success(
     mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
@@ -100,12 +100,12 @@ def test_cytetype_success(
     # Create CyteType instance and run annotation
     cytetype = CyteType(
         mock_adata,
-        cell_group_key=group_key,
-        rank_genes_key=rank_key,
-        results_key_added=result_prefix,
+        group_key=group_key,
+        rank_key=rank_key,
+        results_prefix=result_prefix,
         n_top_genes=5,
     )
-    adata_result = cytetype.run()
+    adata_result = cytetype.run(study_context="Test study context")
 
     # Check mocks called correctly
     mock_submit.assert_called_once()
@@ -144,19 +144,19 @@ def test_cytetype_success(
     )
 
 
-@patch("cytetype.main.submit_annotation_job")
+@patch("cytetype.main.submit_job")
 def test_cytetype_submit_fails(
     mock_submit: MagicMock, mock_adata: anndata.AnnData
 ) -> None:
     """Test CyteType class when submission fails (exception propagates)."""
     mock_submit.side_effect = CyteTypeAPIError("Submit failed")
 
-    cytetype = CyteType(mock_adata, cell_group_key="leiden")
+    cytetype = CyteType(mock_adata, group_key="leiden")
     with pytest.raises(CyteTypeAPIError, match="Submit failed"):
-        cytetype.run()
+        cytetype.run(study_context="Test study context")
 
 
-@patch("cytetype.main.submit_annotation_job", return_value="mock_job_poll_fail")
+@patch("cytetype.main.submit_job", return_value="mock_job_poll_fail")
 @patch("cytetype.main.poll_for_results")
 def test_cytetype_poll_fails(
     mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
@@ -164,12 +164,12 @@ def test_cytetype_poll_fails(
     """Test CyteType class when polling fails (exception propagates)."""
     mock_poll.side_effect = CyteTypeTimeoutError("Poll timed out")
 
-    cytetype = CyteType(mock_adata, cell_group_key="leiden")
+    cytetype = CyteType(mock_adata, group_key="leiden")
     with pytest.raises(CyteTypeTimeoutError, match="Poll timed out"):
-        cytetype.run()
+        cytetype.run(study_context="Test study context")
 
 
-@patch("cytetype.main.submit_annotation_job", return_value="mock_job_custom_url")
+@patch("cytetype.main.submit_job", return_value="mock_job_custom_url")
 @patch("cytetype.main.poll_for_results")
 def test_cytetype_custom_url_and_params(
     mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
@@ -182,8 +182,9 @@ def test_cytetype_custom_url_and_params(
     mock_result: dict[str, list[Any]] = {"annotations": []}  # Added type hint
     mock_poll.return_value = mock_result
 
-    cytetype = CyteType(mock_adata, cell_group_key="leiden")
+    cytetype = CyteType(mock_adata, group_key="leiden")
     cytetype.run(
+        study_context="Test study context",
         api_url=custom_url,
         poll_interval_seconds=custom_poll,
         timeout_seconds=custom_timeout,
@@ -203,7 +204,7 @@ def test_cytetype_custom_url_and_params(
     assert timeout_arg == custom_timeout
 
 
-@patch("cytetype.main.submit_annotation_job")
+@patch("cytetype.main.submit_job")
 @patch("cytetype.main.poll_for_results")
 def test_cytetype_custom_rank_key(
     mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
@@ -216,10 +217,8 @@ def test_cytetype_custom_rank_key(
     custom_rank_key = "custom_rank_genes"
 
     # Run annotation using the custom key
-    cytetype = CyteType(
-        mock_adata, cell_group_key="leiden", rank_genes_key=custom_rank_key
-    )
-    cytetype.run()
+    cytetype = CyteType(mock_adata, group_key="leiden", rank_key=custom_rank_key)
+    cytetype.run(study_context="Test study context")
 
     # Check that _get_markers (called internally) would have used the correct key
     # We can check the markerGenes part of the query submitted
@@ -230,6 +229,41 @@ def test_cytetype_custom_rank_key(
     assert "markerGenes" in query_arg
     assert list(query_arg["markerGenes"].keys()) == ["1", "2", "3"]
     assert query_arg["markerGenes"]["1"][0] == "gene_0"
+
+
+@patch("cytetype.main.submit_job")
+@patch("cytetype.main.poll_for_results")
+def test_cytetype_with_auth_token(
+    mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
+) -> None:
+    """Test that auth_token is properly passed to submit_job and poll_for_results."""
+    job_id = "mock_job_auth_token"
+    mock_submit.return_value = job_id
+    mock_result: dict[str, list[dict[str, str]]] = {
+        "annotations": [
+            {"clusterId": "1", "annotation": "Cell Type A"},
+            {"clusterId": "2", "annotation": "Cell Type B"},
+            {"clusterId": "3", "annotation": "Cell Type C"},
+        ]
+    }
+    mock_poll.return_value = mock_result
+
+    auth_token = "test-bearer-token-main"
+
+    cytetype = CyteType(mock_adata, group_key="leiden")
+    cytetype.run(study_context="Test study context", auth_token=auth_token)
+
+    # Check that submit_job was called with auth_token
+    mock_submit.assert_called_once()
+    submit_call_kwargs = mock_submit.call_args.kwargs
+    assert "auth_token" in submit_call_kwargs
+    assert submit_call_kwargs["auth_token"] == auth_token
+
+    # Check that poll_for_results was called with auth_token
+    mock_poll.assert_called_once()
+    poll_call_kwargs = mock_poll.call_args.kwargs
+    assert "auth_token" in poll_call_kwargs
+    assert poll_call_kwargs["auth_token"] == auth_token
 
 
 # --- TODO ---

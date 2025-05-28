@@ -3,7 +3,7 @@ import requests
 from unittest.mock import patch, MagicMock, call
 from typing import Any
 
-from cytetype.client import submit_annotation_job, poll_for_results
+from cytetype.client import submit_job, poll_for_results
 from cytetype.exceptions import CyteTypeAPIError, CyteTypeTimeoutError, CyteTypeJobError
 from cytetype.config import (
     DEFAULT_API_URL,
@@ -23,7 +23,7 @@ def test_submit_annotation_job_success(mock_post: MagicMock) -> None:
     mock_response.json.return_value = {"job_id": MOCK_JOB_ID}
     mock_post.return_value = mock_response
 
-    job_id = submit_annotation_job(MOCK_QUERY, DEFAULT_API_URL)
+    job_id = submit_job(MOCK_QUERY, DEFAULT_API_URL)
 
     assert job_id == MOCK_JOB_ID
     mock_post.assert_called_once_with(
@@ -47,7 +47,7 @@ def test_submit_annotation_job_api_error(mock_post: MagicMock) -> None:
     mock_post.return_value = mock_response
 
     with pytest.raises(CyteTypeAPIError, match="Network error while submitting job"):
-        submit_annotation_job(MOCK_QUERY, DEFAULT_API_URL)
+        submit_job(MOCK_QUERY, DEFAULT_API_URL)
     mock_post.assert_called_once()
 
 
@@ -57,7 +57,7 @@ def test_submit_annotation_job_connection_error(mock_post: MagicMock) -> None:
     mock_post.side_effect = requests.exceptions.RequestException("Connection failed")
 
     with pytest.raises(CyteTypeAPIError, match="Network error while submitting job"):
-        submit_annotation_job(MOCK_QUERY, DEFAULT_API_URL)
+        submit_job(MOCK_QUERY, DEFAULT_API_URL)
     mock_post.assert_called_once()
 
 
@@ -78,9 +78,7 @@ def test_submit_annotation_job_with_model_config(mock_post: MagicMock) -> None:
         }
     ]
 
-    job_id = submit_annotation_job(
-        MOCK_QUERY, DEFAULT_API_URL, model_config=model_config
-    )
+    job_id = submit_job(MOCK_QUERY, DEFAULT_API_URL, model_config=model_config)
 
     assert job_id == MOCK_JOB_ID
     mock_post.assert_called_once()
@@ -136,9 +134,9 @@ def test_poll_for_results_success(mock_get: MagicMock, mock_sleep: MagicMock) ->
     results_url = f"{DEFAULT_API_URL}/results/{MOCK_JOB_ID}"
     logs_url = f"{DEFAULT_API_URL}/logs/{MOCK_JOB_ID}"
     expected_calls = [
-        call(results_url, timeout=30),  # First results call
-        call(logs_url, timeout=10),  # Log call
-        call(results_url, timeout=30),  # Second results call
+        call(results_url, headers={}, timeout=30),  # First results call
+        call(logs_url, headers={}, timeout=10),  # Log call
+        call(results_url, headers={}, timeout=30),  # Second results call
     ]
     mock_get.assert_has_calls(expected_calls)
     # Check that sleep was called for initial delay and poll interval
@@ -263,3 +261,58 @@ def test_poll_for_results_missing_keys(
     mock_get.assert_called_once()
     # Assert only the initial sleep(10) happened
     mock_sleep.assert_called_once_with(10)
+
+
+# --- Test auth_token functionality ---
+
+
+@patch("cytetype.client.requests.post")
+def test_submit_job_with_auth_token(mock_post: MagicMock) -> None:
+    """Test submit_job with auth_token includes Bearer token in headers."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"job_id": MOCK_JOB_ID}
+    mock_post.return_value = mock_response
+
+    auth_token = "test-bearer-token-123"
+    job_id = submit_job(MOCK_QUERY, DEFAULT_API_URL, auth_token=auth_token)
+
+    assert job_id == MOCK_JOB_ID
+    mock_post.assert_called_once()
+    args, kwargs = mock_post.call_args
+    assert args[0] == f"{DEFAULT_API_URL}/annotate"
+    assert kwargs["json"] == MOCK_QUERY
+
+    # Check that Authorization header is included
+    expected_headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {auth_token}",
+    }
+    assert kwargs["headers"] == expected_headers
+
+
+@patch("cytetype.client.time.sleep", return_value=None)
+@patch("cytetype.client.requests.get")
+def test_poll_for_results_with_auth_token(
+    mock_get: MagicMock, mock_sleep: MagicMock
+) -> None:
+    """Test poll_for_results with auth_token includes Bearer token in headers."""
+    mock_response_complete = MagicMock(spec=requests.Response)
+    mock_response_complete.status_code = 200
+    mock_response_complete.json.return_value = {
+        "status": "completed",
+        "result": MOCK_RESULT_PAYLOAD,
+    }
+    mock_get.return_value = mock_response_complete
+
+    auth_token = "test-bearer-token-456"
+    result = poll_for_results(
+        MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5, auth_token=auth_token
+    )
+
+    assert result == MOCK_RESULT_PAYLOAD
+
+    # Check that Authorization header is included in the call
+    results_url = f"{DEFAULT_API_URL}/results/{MOCK_JOB_ID}"
+    expected_headers = {"Authorization": f"Bearer {auth_token}"}
+    mock_get.assert_called_once_with(results_url, headers=expected_headers, timeout=30)

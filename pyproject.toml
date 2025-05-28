@@ -1,7 +1,7 @@
 [project]
 name = "cytetype"
 dynamic = ["version"]
-description = "Python client for automated cell type annotation of single-cell RNA-seq data."
+description = "Python client for characterization of clusters from single-cell RNA-seq data."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -10,6 +10,7 @@ dependencies = [
     "requests>=2.32.3",
     "pydantic>=2.0.0",
     "session-info>=1.0.1",
+    "python-dotenv>=1.1.0",
 ]
 authors = [
     {name = "Parashar Dhapola", email = "parashar@nygen.io"}
@@ -18,9 +19,9 @@ license = {text = "CC BY-NC-SA 4.0"}
 keywords = ["bioinformatics", "single-cell", "RNA-seq", "annotation", "cell types"]
 
 [project.urls]
-Homepage = "https://github.com/NygenAnalytics/CyteType"
-Issues = "https://github.com/NygenAnalytics/CyteType/issues"
-Repository = "https://github.com/NygenAnalytics/CyteType"
+Homepage = "https://github.com/NygenAnalytics/cytetype"
+Issues = "https://github.com/NygenAnalytics/cytetype/issues"
+Repository = "https://github.com/NygenAnalytics/cytetype"
 
 [dependency-groups]
 dev = [

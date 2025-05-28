@@ -6,26 +6,38 @@ from .config import logger
 from .exceptions import CyteTypeAPIError, CyteTypeTimeoutError, CyteTypeJobError
 
 
-def submit_annotation_job(
+def submit_job(
     payload: dict[str, Any],
     api_url: str,
-    extra_headers: dict[str, Any] | None = None,
     model_config: list[dict[str, Any]] | None = None,
+    auth_token: str | None = None,
 ) -> str:
-    """Submits the annotation job to the API and returns the job ID."""
+    """Submits the job to the API and returns the job ID.
+
+    Args:
+        payload: The job payload to submit
+        api_url: The API base URL
+        model_config: Model configuration to include in the payload
+        auth_token: Bearer token for API authentication
+
+    Returns:
+        The job ID returned by the API
+    """
 
     submit_url = f"{api_url}/annotate"
-    logger.debug(f"Submitting annotation job to {submit_url}")
-    
+    logger.debug(f"Submitting job to {submit_url}")
+
     # Add model_config to payload if provided
     if model_config is not None:
         payload = payload.copy()  # Don't modify the original payload
         payload["modelConfig"] = model_config
-    
+
     try:
         headers = {"Content-Type": "application/json"}
-        if extra_headers:
-            headers.update(extra_headers)
+
+        # Add bearer token authentication if provided
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
 
         response = requests.post(submit_url, json=payload, headers=headers, timeout=60)
 
@@ -34,7 +46,7 @@ def submit_annotation_job(
         job_id = response.json().get("job_id")
         if not job_id:
             raise ValueError("API response did not contain a 'job_id'.")
-        logger.debug(f"Annotation job submitted successfully. Job ID: {job_id}")
+        logger.debug(f"Job submitted successfully. Job ID: {job_id}")
         return str(job_id)
     except requests.exceptions.Timeout as e:
         raise CyteTypeTimeoutError("Timeout while submitting job") from e
@@ -55,9 +67,24 @@ def submit_annotation_job(
 
 
 def poll_for_results(
-    job_id: str, api_url: str, poll_interval: int, timeout: int
+    job_id: str,
+    api_url: str,
+    poll_interval: int,
+    timeout: int,
+    auth_token: str | None = None,
 ) -> dict[str, Any]:
-    """Polls the API for results for a given job ID."""
+    """Polls the API for results for a given job ID.
+
+    Args:
+        job_id: The job ID to poll for results
+        api_url: The API base URL
+        poll_interval: How often to poll for results (in seconds)
+        timeout: Maximum time to wait for results (in seconds)
+        auth_token: Bearer token for API authentication
+
+    Returns:
+        The result data from the API when the job completes
+    """
 
     time.sleep(10)  # Initial delay before first poll
 
@@ -68,6 +95,11 @@ def poll_for_results(
     start_time = time.time()
     last_logs = ""  # Initialize variable to store last fetched logs
 
+    # Prepare headers for authenticated requests
+    headers = {}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+
     while True:
         elapsed_time = time.time() - start_time
         if elapsed_time > timeout:
@@ -77,13 +109,13 @@ def poll_for_results(
             f"Polling attempt for job {job_id}. Elapsed time: {elapsed_time:.1f}s"
         )
         try:
-            response = requests.get(results_url, timeout=30)
+            response = requests.get(results_url, headers=headers, timeout=30)
             response.raise_for_status()
             data = response.json()
             status = data.get("status")
 
             if status == "completed":
-                logger.info(f"Annotation job {job_id} completed successfully.")
+                logger.info(f"Job {job_id} completed successfully.")
                 result_data = data.get("result")
                 if (
                     not isinstance(result_data, dict)
@@ -93,9 +125,7 @@ def poll_for_results(
                 return result_data
             elif status == "error":
                 error_message = data.get("message", "Unknown error")
-                logger.debug(
-                    f"Annotation job {job_id} failed on the server: {error_message}"
-                )
+                logger.debug(f"Job {job_id} failed on the server: {error_message}")
                 raise CyteTypeJobError("Server error: job failed")
             elif status in ["processing", "pending"]:
                 logger.debug(
@@ -103,7 +133,7 @@ def poll_for_results(
                 )
                 try:
                     log_response = requests.get(
-                        logs_url, timeout=10
+                        logs_url, headers=headers, timeout=10
                     )  # Short timeout for logs
                     log_response.raise_for_status()
                     current_logs = log_response.text

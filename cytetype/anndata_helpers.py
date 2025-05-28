@@ -107,3 +107,71 @@ def _get_markers(
         ]
 
     return markers
+
+
+def _aggregate_metadata(
+    adata: anndata.AnnData,
+    group_key: str,
+    min_percentage: int = 10,
+) -> dict[str, dict[str, dict[str, int]]]:
+    """
+    Build group metadata by analyzing categorical/string columns in adata.obs.
+
+    For each categorical column (excluding the group_key), calculates the percentage
+    distribution of values within each group and returns only values that represent
+    more than min_percentage of cells in that group.
+
+    Args:
+        adata: AnnData object containing single-cell data
+        group_key: Column name in adata.obs to group cells by
+        min_percentage: Minimum percentage of cells in a group to include
+
+    Returns:
+        Nested dictionary structure:
+        {group_name: {column_name: {value: percentage}}}
+        where percentage is the percentage of cells in that group having that value
+        (only values >min_percentage are included)
+    """
+    grouped_data = adata.obs.groupby(group_key, observed=False)
+    column_distributions: dict[str, dict[str, dict[str, int]]] = {}
+
+    # Process each column in adata.obs
+    for column_name in adata.obs.columns:
+        if column_name == group_key:
+            continue
+
+        column_dtype = adata.obs[column_name].dtype
+        if column_dtype in ["object", "category", "string"]:
+            # Calculate value counts for each group
+            value_counts_df = grouped_data[column_name].value_counts().unstack().T
+
+            # Convert to percentages and filter for values >min_percentage
+            percentage_df = (
+                (100 * value_counts_df / value_counts_df.sum())
+                .fillna(0)
+                .astype(int)
+                .T.stack()
+            )
+            significant_values = percentage_df[percentage_df > min_percentage].to_dict()
+
+            # Reorganize into nested dictionary structure
+            group_value_percentages: dict[str, dict[str, int]] = {}
+            for (group_name, value), percentage in significant_values.items():
+                if group_name not in group_value_percentages:
+                    group_value_percentages[group_name] = {}
+                group_value_percentages[group_name][value] = percentage
+
+            column_distributions[column_name] = group_value_percentages
+
+    # Reorganize final structure: {group_name: {column_name: {value: percentage}}}
+    result: dict[str, dict[str, dict[str, int]]] = {
+        group_name: {} for group_name in grouped_data.groups.keys()
+    }
+
+    for column_name in column_distributions:
+        for group_name in column_distributions[column_name]:
+            result[group_name][column_name] = column_distributions[column_name][
+                group_name
+            ]
+
+    return result
