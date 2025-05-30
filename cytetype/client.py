@@ -32,9 +32,7 @@ def submit_job(
         if auth_token:
             headers["Authorization"] = f"Bearer {auth_token}"
 
-        response = requests.post(
-            submit_url, json=payload_copy, headers=headers, timeout=60
-        )
+        response = requests.post(submit_url, json=payload, headers=headers, timeout=60)
 
         response.raise_for_status()
 
