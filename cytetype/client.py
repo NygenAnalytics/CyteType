@@ -103,6 +103,15 @@ def poll_for_results(
         )
         try:
             response = requests.get(results_url, headers=headers, timeout=30)
+
+            # Handle 404 specifically - results endpoint might not be ready yet
+            if response.status_code == 404:
+                logger.debug(
+                    f"Results endpoint not ready yet for job {job_id} (404). Waiting {poll_interval}s..."
+                )
+                time.sleep(poll_interval)
+                continue
+
             response.raise_for_status()
             data = response.json()
             status = data.get("status")
