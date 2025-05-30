@@ -197,6 +197,8 @@ class CyteType:
             "bioContext": bio_context,
             "markerGenes": self.marker_genes,
             "expressionData": self.expression_percentages,
+            "modelConfig": model_config_list,
+            "runConfig": run_config_dict,
         }
 
         if save_query:
@@ -205,7 +207,9 @@ class CyteType:
 
         # Submit job and poll for results
         job_id = submit_job(
-            query, api_url, model_config=model_config_list, auth_token=auth_token
+            query,
+            api_url,
+            auth_token=auth_token,
         )
         logger.info(f"Waiting for results for job ID: {job_id}")
 

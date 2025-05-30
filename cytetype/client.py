@@ -9,7 +9,6 @@ from .exceptions import CyteTypeAPIError, CyteTypeTimeoutError, CyteTypeJobError
 def submit_job(
     payload: dict[str, Any],
     api_url: str,
-    model_config: list[dict[str, Any]] | None = None,
     auth_token: str | None = None,
 ) -> str:
     """Submits the job to the API and returns the job ID.
@@ -17,7 +16,6 @@ def submit_job(
     Args:
         payload: The job payload to submit
         api_url: The API base URL
-        model_config: Model configuration to include in the payload
         auth_token: Bearer token for API authentication
 
     Returns:
@@ -26,11 +24,6 @@ def submit_job(
 
     submit_url = f"{api_url}/annotate"
     logger.debug(f"Submitting job to {submit_url}")
-
-    # Add model_config to payload if provided
-    if model_config is not None:
-        payload = payload.copy()  # Don't modify the original payload
-        payload["modelConfig"] = model_config
 
     try:
         headers = {"Content-Type": "application/json"}
