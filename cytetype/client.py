@@ -10,6 +10,7 @@ def submit_job(
     payload: dict[str, Any],
     api_url: str,
     model_config: list[dict[str, Any]] | None = None,
+    run_config: dict[str, Any] | None = None,
     auth_token: str | None = None,
 ) -> str:
     """Submits the job to the API and returns the job ID.
@@ -18,6 +19,7 @@ def submit_job(
         payload: The job payload to submit
         api_url: The API base URL
         model_config: Model configuration to include in the payload
+        run_config: Run configuration to include in the payload
         auth_token: Bearer token for API authentication
 
     Returns:
@@ -27,10 +29,16 @@ def submit_job(
     submit_url = f"{api_url}/annotate"
     logger.debug(f"Submitting job to {submit_url}")
 
+    # Create a copy of payload to avoid modifying the original
+    payload_copy = payload.copy()
+
     # Add model_config to payload if provided
     if model_config is not None:
-        payload = payload.copy()  # Don't modify the original payload
-        payload["modelConfig"] = model_config
+        payload_copy["modelConfig"] = model_config
+
+    # Add run_config to payload if provided
+    if run_config is not None:
+        payload_copy["runConfig"] = run_config
 
     try:
         headers = {"Content-Type": "application/json"}
@@ -39,7 +47,9 @@ def submit_job(
         if auth_token:
             headers["Authorization"] = f"Bearer {auth_token}"
 
-        response = requests.post(submit_url, json=payload, headers=headers, timeout=60)
+        response = requests.post(
+            submit_url, json=payload_copy, headers=headers, timeout=60
+        )
 
         response.raise_for_status()
 
