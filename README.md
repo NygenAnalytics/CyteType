@@ -171,7 +171,7 @@ adata = annotator.run(
 
 #### Run configuration
 
-- **`concurrentClusters`** (int, default=3, range=2-10): Maximum number of clusters to process simultaneously. Higher values may speed up processing but can cause rate limit errors from LLM API providers.
+- **`concurrentClusters`** (int, default=5, range=2-30): Maximum number of clusters to process simultaneously. Higher values may speed up processing but can cause rate limit errors from LLM API providers.
 - **`maxAnnotationRevisions`** (int, default=2, range=1-5): Maximum number of refinement iterations based on reviewer feedback. More revisions may improve annotation quality but increase processing time.
 - **`maxLLMRequests`** (int, default=500, range=50-2000): Maximum total number of LLM API calls allowed for the entire job. The job will be terminated if this limit is reached. Helps control costs and prevents runaway processes.
 
