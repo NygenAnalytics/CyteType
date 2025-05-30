@@ -13,7 +13,7 @@
 
 ---
 
-**CyteType** is a Python package for automated cell type annotation of single-cell RNA-seq clusters using large language models.
+**CyteType** is a Python package for deep chracterization of cell clusters from single-cell RNA-seq data. This package interfaces with Anndata objects to call CyteType API.
 
 ## Quick Start
 
@@ -26,7 +26,6 @@ import cytetype
 adata = anndata.read_h5ad("path/to/your/data.h5ad")
 sc.pp.normalize_total(adata, target_sum=1e4)
 sc.pp.log1p(adata)
-sc.tl.leiden(adata, key_added='leiden')
 sc.tl.rank_genes_groups(adata, groupby='leiden', method='t-test')
 
 # Initialize CyteType (performs data preparation)
@@ -45,20 +44,9 @@ print(adata.obs.cytetype_leiden)
 
 ```bash
 pip install cytetype
-# or
-uv add cytetype
 ```
 
-## How It Works
-
-CyteType uses a two-step process:
-
-1. **Data Preparation** (during `__init__`): Validates data, calculates expression percentages, and extracts marker genes
-2. **API Annotation** (during `run()`): Sends data to CyteType API for LLM-powered cell type annotation
-
-This design allows efficient reuse when making multiple annotation requests with different parameters.
-
-## Basic Usage
+## Usage
 
 ### Required Preprocessing
 
@@ -91,7 +79,7 @@ annotator = CyteType(adata, group_key='clusters')
 
 # Run annotation
 adata = annotator.run(
-    study_context="Mouse brain cortex, postnatal development"
+    study_context="Adult human brain tissue samples from healthy controls and Alzheimer's disease patients, analyzed using 10X Genomics single-cell RNA-seq. Samples include cortical and hippocampal regions."
 )
 
 # Results are stored in:
@@ -99,9 +87,20 @@ adata = annotator.run(
 # - adata.uns['cytetype_results'] (full API response)
 ```
 
-## Configuration Options
+The `study_context` should include comprehensive biological information about your experimental setup:
 
-### Initialization Parameters
+- **Organisms**: Species being studied (e.g., "human", "mouse")
+- **Tissues**: Tissue types and anatomical regions
+- **Diseases**: Disease conditions or states
+- **Developmental stages**: Age, developmental timepoints
+- **Single-cell methods**: Sequencing platform (e.g., "10X Genomics", "Smart-seq2")
+- **Experimental conditions**: Treatments, time courses, perturbations
+
+**Example**: `"Adult human brain tissue samples from healthy controls and Alzheimer's disease patients, analyzed using 10X Genomics single-cell RNA-seq. Samples include cortical and hippocampal regions."`
+
+# Configuration Options
+
+## Initialization Parameters
 
 ```python
 annotator = CyteType(
@@ -114,54 +113,124 @@ annotator = CyteType(
 )
 ```
 
+## Submitting Annotation job
+The `run` method accepts several configuration parameters to control the annotation process:
+
 ### Custom LLM Configuration
 
+The CyteType API provides access to some chosen LLM providers by default.
+Users can choose to provide their own LLM models and model providers.
+Many models can be provided simultaneously and then they will be used iteratively for each of the clusters. 
+
 ```python
-# Use your own API key
 adata = annotator.run(
     study_context="Human PBMC from COVID-19 patients",
     model_config=[{
         'provider': 'openai',
-        'name': 'gpt-4o',
-        'apiKey': 'your-api-key'
-    }]
+        'name': 'gpt-4o-mini',
+        'apiKey': 'your-api-key',
+        'baseUrl': 'https://api.openai.com/v1',  # Optional
+        'modelSettings': {                       # Optional
+            'temperature': 0.0,
+            'max_tokens': 4096
+        }  
+    }],
+)
+```
+#### Rate Limiting
+
+If you do not provide your own model providers then the CyteType API implements rate limiting for fair usage:
+- Annotation submissions: 5 requests per hour per IP
+- Result retrieval: 20 requests per minute per IP
+
+If you exceed rate limits, the system will return appropriate error messages with retry timing information
+
+Supported providers: `openai`, `anthropic`, `google`, `xai`, `groq`, `mistral`, `openrouter`
+
+### Advanced parameters
+
+```python
+adata = annotator.run(
+    ...
+    run_config={
+        'concurrentClusters': 3,        # Default: 3, Range: 2-10
+        'maxAnnotationRevisions': 2,    # Default: 2, Range: 1-5
+        'maxLLMRequests': 500           # Default: 500, Range: 50-2000
+    },
+    
+    # API polling and timeout settings
+    poll_interval_seconds=10,           # How often to check for results
+    timeout_seconds=1200,               # Max wait time (20 minutes)
+    
+    # API configuration
+    api_url="https://custom-api.com",   # Custom API endpoint
+    auth_token="your-auth-token",       # Authentication token
+    save_query=True                     # Save query to query.json
 )
 ```
 
-Supported providers: `openai`, `anthropic`, `google`, `xai`, `groq`
+#### Run configuration
+
+- **`concurrentClusters`** (int, default=3, range=2-10): Maximum number of clusters to process simultaneously. Higher values may speed up processing but can cause rate limit errors from LLM API providers.
+- **`maxAnnotationRevisions`** (int, default=2, range=1-5): Maximum number of refinement iterations based on reviewer feedback. More revisions may improve annotation quality but increase processing time.
+- **`maxLLMRequests`** (int, default=500, range=50-2000): Maximum total number of LLM API calls allowed for the entire job. The job will be terminated if this limit is reached. Helps control costs and prevents runaway processes.
+
+#### Additional Run Parameters
+
+- **`poll_interval_seconds`** (int, default=10): How frequently to check the API for job completion.
+- **`timeout_seconds`** (int, default=1200): Maximum time to wait for results before timing out.
+- **`api_url`** (str): Custom API endpoint URL for self-hosted deployments.
+- **`auth_token`** (str, optional): Bearer token for API authentication.
+- **`save_query`** (bool, default=True): Whether to save the API query to `query.json` for debugging.
+
+## Annotation Process
+
+CyteType performs comprehensive cell type annotation through an automated pipeline:
+
+### Core Functionality
+
+- **Automated Annotation**: Identifies likely cell types for each cluster based on marker genes
+- **Ontology Mapping**: Maps identified cell types to Cell Ontology terms (e.g., `CL_0000127`)  
+- **Review & Justification**: Analyzes supporting/conflicting markers and assesses confidence
+- **Alternative Suggestions**: Provides potential alternative annotations when applicable
+- **Real-time Progress**: Updates results incrementally as clusters are processed
+
+### Job Status and Progress
+
+When you submit an annotation job, it progresses through several stages:
+
+- **PENDING**: Job is queued and waiting to start
+- **PROCESSING**: Job is actively running with incremental results available
+- **COMPLETED**: All clusters have been annotated successfully
+- **FAILED**: Processing encountered an error
+
+During `PROCESSING`, you can:
+- Monitor progress through the report URL
+- View partial results for completed clusters
+- See biological context summaries
+- Track completion status
+
+### Result Format
+
+Results include detailed annotations for each cluster:
+
+```python
+# Access results after annotation
+results = adata.uns['cytetype_results']['result']
+
+# Each annotation includes:
+for annotation in results['annotations']:
+    print(f"Cluster: {annotation['clusterId']}")
+    print(f"Cell Type: {annotation['annotation']}")
+    print(f"Confidence: {annotation['confidence']}")
+    print(f"Ontology Term: {annotation['ontologyTerm']}")
+    print(f"Supporting Markers: {annotation['supportingMarkers']}")
+    print(f"Justification: {annotation['justification']}")
+```
 
 ## Example Report
 
-View a sample annotation report: [CyteType Report](https://cytetype.nygen.io/report/97ba2a69-ccfa-4b57-8614-746ce2024333)
-
-The report includes:
-- Detailed cell type annotations with confidence scores
-- Marker gene analysis and supporting evidence
-- Alternative annotations and biological justifications
-
-## Advanced Usage
-
-### Multiple Annotations
-
-```python
-# Initialize once, run multiple times
-annotator = CyteType(adata, group_key='leiden')
-
-# Different contexts
-adata1 = annotator.run(study_context="Healthy tissue")
-adata2 = annotator.run(study_context="Disease tissue")
-```
-
-### Custom Gene Symbols
-
-```python
-# If gene symbols are in a different column
-annotator = CyteType(
-    adata, 
-    group_key='leiden',
-    gene_symbols_column='gene_name'  # instead of default 'gene_symbols'
-)
-```
+View a sample annotation report: [CyteType Report](https://cytetype.nygen.io/report/5ad447a9-613c-4214-bcd4-01558809f343)
 
 ## Development
 

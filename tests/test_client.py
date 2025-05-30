@@ -78,19 +78,19 @@ def test_submit_annotation_job_with_model_config(mock_post: MagicMock) -> None:
         }
     ]
 
-    job_id = submit_job(MOCK_QUERY, DEFAULT_API_URL, model_config=model_config)
+    # Create payload with model config included (matching how main.py does it)
+    payload_with_model_config = MOCK_QUERY.copy()
+    payload_with_model_config["modelConfig"] = model_config
+
+    job_id = submit_job(payload_with_model_config, DEFAULT_API_URL)
 
     assert job_id == MOCK_JOB_ID
     mock_post.assert_called_once()
     args, kwargs = mock_post.call_args
     assert args[0] == f"{DEFAULT_API_URL}/annotate"
-    # Construct expected payload including modelConfig
-    expected_payload = MOCK_QUERY.copy()
-    expected_payload["modelConfig"] = model_config
-    assert kwargs["json"] == expected_payload
-    # No need to check params anymore as modelConfig is in json payload
-    # import json # Need json to decode the string param
-    # assert json.loads(kwargs["params"]["modelConfig"]) == model_config
+    # Check that the payload includes modelConfig
+    assert kwargs["json"] == payload_with_model_config
+    assert kwargs["json"]["modelConfig"] == model_config
 
 
 # --- Test poll_for_results ---
