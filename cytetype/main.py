@@ -14,7 +14,7 @@ from .anndata_helpers import (
     _aggregate_metadata,
 )
 
-__all__ = ["CyteType", "BioContext", "ModelConfig"]
+__all__ = ["CyteType", "BioContext", "ModelConfig", "RunConfig"]
 
 
 class BioContext(BaseModel):
@@ -33,8 +33,19 @@ class ModelConfig(BaseModel):
 
     provider: str
     name: str | None = None
-    api_key: str | None = Field(default=None, alias="apiKey")
-    base_url: str | None = Field(default=None, alias="baseUrl")
+    apiKey: str | None = Field(default=None)
+    baseUrl: str | None = Field(default=None)
+    modelSettings: dict[str, Any] | None = Field(default=None)
+
+
+class RunConfig(BaseModel):
+    """Configuration for the annotation run."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    concurrentClusters: int | None = Field(default=None)
+    maxAnnotationRevisions: int | None = Field(default=None)
+    maxLLMRequests: int | None = Field(default=None)
 
 
 class CyteType:
@@ -143,6 +154,7 @@ class CyteType:
         self,
         study_context: str,
         model_config: list[dict[str, Any]] | None = None,
+        run_config: dict[str, Any] | None = None,
         poll_interval_seconds: int = DEFAULT_POLL_INTERVAL,
         timeout_seconds: int = DEFAULT_TIMEOUT,
         api_url: str = DEFAULT_API_URL,
@@ -156,8 +168,11 @@ class CyteType:
                 For example, include information about 'organisms', 'tissues', 'diseases', 'developmental_stages',
                 'single_cell_methods', 'experimental_conditions'. Defaults to None.
             model_config (list[dict[str, Any]] | None, optional): Configuration for the large language
-                models to be used. Each dict can include 'provider', 'name', 'apiKey', 'baseUrl'.
+                models to be used. Each dict must include 'provider', 'name', 'apiKey', 'baseUrl' (optional), 'modelSettings' (optional).
                 Defaults to None, using the API's default model.
+            run_config (dict[str, Any] | None, optional): Configuration for the annotation run.
+                Can include 'concurrentClusters', 'maxAnnotationRevisions', 'maxLLMRequests'.
+                Defaults to None, using the API's default settings.
             poll_interval_seconds (int, optional): How often (in seconds) to check for results from
                 the API. Defaults to DEFAULT_POLL_INTERVAL.
             timeout_seconds (int, optional): Maximum time (in seconds) to wait for API results before
@@ -182,15 +197,23 @@ class CyteType:
 
         bio_context = BioContext(
             studyContext=study_context, clusterContext=self.group_metadata
-        ).model_dump(by_alias=True)
+        ).model_dump()
 
         # Process model config using Pydantic model
         model_config_list = None
         if model_config is not None:
             model_config_list = [
-                ModelConfig(**config).model_dump(by_alias=True)
-                for config in model_config
+                ModelConfig(**config).model_dump() for config in model_config
             ]
+
+        # Process run config using Pydantic model
+        run_config_dict = None
+        if run_config is not None:
+            run_config_dict = RunConfig(**run_config).model_dump()
+            # Remove None values
+            run_config_dict = {
+                k: v for k, v in run_config_dict.items() if v is not None
+            }
 
         # Prepare API query
         query: dict[str, Any] = {
@@ -247,12 +270,14 @@ class CyteType:
         ).astype("category")
 
         # Check for unannotated clusters
-        unannotated_clusters = set([
-            cluster_id
-            for cluster_id in self.clusters
-            if cluster_id not in annotation_map
-        ])
-        
+        unannotated_clusters = set(
+            [
+                cluster_id
+                for cluster_id in self.clusters
+                if cluster_id not in annotation_map
+            ]
+        )
+
         if unannotated_clusters:
             logger.warning(
                 f"No annotations received from API for cluster IDs: {unannotated_clusters}. "
