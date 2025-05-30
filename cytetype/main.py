@@ -200,20 +200,22 @@ class CyteType:
         ).model_dump()
 
         # Process model config using Pydantic model
-        model_config_list = None
         if model_config is not None:
             model_config_list = [
                 ModelConfig(**config).model_dump() for config in model_config
             ]
+        else:
+            model_config_list = []
 
         # Process run config using Pydantic model
-        run_config_dict = None
         if run_config is not None:
             run_config_dict = RunConfig(**run_config).model_dump()
             # Remove None values
             run_config_dict = {
                 k: v for k, v in run_config_dict.items() if v is not None
             }
+        else:
+            run_config_dict = {}
 
         # Prepare API query
         query: dict[str, Any] = {
