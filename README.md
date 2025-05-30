@@ -177,8 +177,8 @@ adata = annotator.run(
 
 #### Additional Run Parameters
 
-- **`poll_interval_seconds`** (int, default=10): How frequently to check the API for job completion.
-- **`timeout_seconds`** (int, default=1200): Maximum time to wait for results before timing out.
+- **`poll_interval_seconds`** (int, default=30): How frequently to check the API for job completion.
+- **`timeout_seconds`** (int, default=3600): Maximum time to wait for results before timing out.
 - **`api_url`** (str): Custom API endpoint URL for self-hosted deployments.
 - **`auth_token`** (str, optional): Bearer token for API authentication.
 - **`save_query`** (bool, default=True): Whether to save the API query to `query.json` for debugging.

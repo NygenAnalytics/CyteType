@@ -12,5 +12,5 @@ logger.add(
 
 
 DEFAULT_API_URL = "https://nygen-labs-prod--cell-annotation-agent-fastapi-app.modal.run"
-DEFAULT_POLL_INTERVAL = 10
-DEFAULT_TIMEOUT = 1200
+DEFAULT_POLL_INTERVAL = 30
+DEFAULT_TIMEOUT = 3600
