@@ -26,10 +26,13 @@ import cytetype
 adata = anndata.read_h5ad("path/to/your/data.h5ad")
 sc.pp.normalize_total(adata, target_sum=1e4)
 sc.pp.log1p(adata)
-sc.tl.rank_genes_groups(adata, groupby='leiden', method='t-test')
+sc.pp.pca(adata)
+sc.pp.neighbors(adata)
+sc.tl.leiden(adata, key_added = "clusters") 
+sc.tl.rank_genes_groups(adata, groupby='clusters', method='t-test')
 
 # Initialize CyteType (performs data preparation)
-annotator = cytetype.CyteType(adata, group_key='leiden')
+annotator = cytetype.CyteType(adata, group_key='clusters')
 
 # Run annotation
 adata = annotator.run(
@@ -37,7 +40,7 @@ adata = annotator.run(
 )
 
 # View results
-print(adata.obs.cytetype_leiden)
+print(adata.obs.cytetype_clusters)
 ```
 
 ## Installation
@@ -63,6 +66,8 @@ sc.pp.normalize_total(adata, target_sum=1e4)
 sc.pp.log1p(adata)
 
 # Clustering
+sc.pp.pca(adata)
+sc.pp.neighbors(adata)
 sc.tl.leiden(adata, key_added='clusters')
 
 # Differential expression (required)
