@@ -29,7 +29,6 @@ sc.pp.log1p(adata)
 sc.pp.pca(adata)
 sc.pp.neighbors(adata)
 sc.tl.leiden(adata, key_added = "clusters") 
-
 sc.tl.rank_genes_groups(adata, groupby='clusters', method='t-test')
 
 # Initialize CyteType (performs data preparation)
@@ -64,10 +63,9 @@ import scanpy as sc
 
 # Standard preprocessing
 sc.pp.normalize_total(adata, target_sum=1e4)
-
+sc.pp.log1p(adata)
 
 # Clustering
-sc.pp.log1p(adata)
 sc.pp.pca(adata)
 sc.pp.neighbors(adata)
 sc.tl.leiden(adata, key_added='clusters')
