@@ -117,7 +117,6 @@ class CyteType:
             clusters=self.clusters,
             batch_size=pcent_batch_size,
             gene_names=adata.var[self.gene_symbols_column].tolist(),
-
         )
 
         logger.info("Extracting marker genes.")
@@ -141,7 +140,9 @@ class CyteType:
                 self.cluster_map.get(str(key), str(key)): value
                 for key, value in self.group_metadata.items()
             }
-            self.group_metadata = {k: self.group_metadata[k] for k in sorted(self.group_metadata.keys())}
+            self.group_metadata = {
+                k: self.group_metadata[k] for k in sorted(self.group_metadata.keys())
+            }
         else:
             self.group_metadata = {}
 
@@ -264,10 +265,7 @@ class CyteType:
             for item in result.get("annotations", [])
         }
         self.adata.obs[f"{results_prefix}_annotation_{self.group_key}"] = pd.Series(
-            [
-                annotation_map.get(cluster_id, "Unknown")
-                for cluster_id in self.clusters
-            ],
+            [annotation_map.get(cluster_id, "Unknown") for cluster_id in self.clusters],
             index=self.adata.obs.index,
         ).astype("category")
 
@@ -275,10 +273,15 @@ class CyteType:
             item["clusterId"]: item["ontologyTerm"]
             for item in result.get("annotations", [])
         }
-        self.adata.obs[f"{results_prefix}_cellOntologyTerm_{self.group_key}"] = pd.Series(
-            [ontology_map.get(cluster_id, "Unknown") for cluster_id in self.clusters],
-            index=self.adata.obs.index,
-        ).astype("category")
+        self.adata.obs[f"{results_prefix}_cellOntologyTerm_{self.group_key}"] = (
+            pd.Series(
+                [
+                    ontology_map.get(cluster_id, "Unknown")
+                    for cluster_id in self.clusters
+                ],
+                index=self.adata.obs.index,
+            ).astype("category")
+        )
 
         # Check for unannotated clusters
         unannotated_clusters = set(

@@ -86,9 +86,21 @@ def test_cytetype_success(
     mock_submit.return_value = job_id
     mock_result: dict[str, list[dict[str, str]]] = {
         "annotations": [
-            {"clusterId": "1", "annotation": "Cell Type A", "ontologyTerm": "CL:0000001"},  # Corresponds to '0'
-            {"clusterId": "2", "annotation": "Cell Type B", "ontologyTerm": "CL:0000002"},  # Corresponds to '1'
-            {"clusterId": "3", "annotation": "Cell Type C", "ontologyTerm": "CL:0000003"},  # Corresponds to '2'
+            {
+                "clusterId": "1",
+                "annotation": "Cell Type A",
+                "ontologyTerm": "CL:0000001",
+            },  # Corresponds to '0'
+            {
+                "clusterId": "2",
+                "annotation": "Cell Type B",
+                "ontologyTerm": "CL:0000002",
+            },  # Corresponds to '1'
+            {
+                "clusterId": "3",
+                "annotation": "Cell Type C",
+                "ontologyTerm": "CL:0000003",
+            },  # Corresponds to '2'
         ]
     }
     mock_poll.return_value = mock_result
@@ -242,9 +254,21 @@ def test_cytetype_with_auth_token(
     mock_submit.return_value = job_id
     mock_result: dict[str, list[dict[str, str]]] = {
         "annotations": [
-            {"clusterId": "1", "annotation": "Cell Type A", "ontologyTerm": "CL:0000001"},
-            {"clusterId": "2", "annotation": "Cell Type B", "ontologyTerm": "CL:0000002"},
-            {"clusterId": "3", "annotation": "Cell Type C", "ontologyTerm": "CL:0000003"},
+            {
+                "clusterId": "1",
+                "annotation": "Cell Type A",
+                "ontologyTerm": "CL:0000001",
+            },
+            {
+                "clusterId": "2",
+                "annotation": "Cell Type B",
+                "ontologyTerm": "CL:0000002",
+            },
+            {
+                "clusterId": "3",
+                "annotation": "Cell Type C",
+                "ontologyTerm": "CL:0000003",
+            },
         ]
     }
     mock_poll.return_value = mock_result
