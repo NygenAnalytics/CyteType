@@ -157,6 +157,8 @@ def _aggregate_metadata(
             # Reorganize into nested dictionary structure
             group_value_percentages: dict[str, dict[str, int]] = {}
             for (group_name, value), percentage in significant_values.items():
+                group_name = str(group_name)
+                value = str(value)
                 if group_name not in group_value_percentages:
                     group_value_percentages[group_name] = {}
                 group_value_percentages[group_name][value] = percentage
