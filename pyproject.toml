@@ -3,7 +3,7 @@ name = "cytetype"
 dynamic = ["version"]
 description = "Python client for characterization of clusters from single-cell RNA-seq data."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "anndata>=0.11.4",
     "loguru>=0.7.3",

@@ -64,7 +64,6 @@ class CyteType:
         rank_key: str = "rank_genes_groups",
         gene_symbols_column: str = "gene_symbols",
         n_top_genes: int = 50,
-        results_prefix: str = "cytetype",
         aggregate_metadata: bool = True,
         min_percentage: int = 10,
         pcent_batch_size: int = 2000,
@@ -84,9 +83,6 @@ class CyteType:
             n_top_genes (int, optional): Number of top marker genes per cluster to extract during
                 initialization. Higher values may improve annotation quality but increase memory usage.
                 Defaults to 50.
-            results_prefix (str, optional): Prefix for keys added to `adata.obs` and `adata.uns` to
-                store results. The final annotation column will be
-                `adata.obs[f"{results_key}_{group_key}"]`. Defaults to "cytetype".
             aggregate_metadata (bool, optional): Whether to aggregate metadata from the AnnData object.
                 Defaults to True.
             min_percentage (int, optional): Minimum percentage of cells in a group to include in the
@@ -103,7 +99,6 @@ class CyteType:
         self.rank_key = rank_key
         self.gene_symbols_column = gene_symbols_column
         self.n_top_genes = n_top_genes
-        self.results_prefix = results_prefix
         self.pcent_batch_size = pcent_batch_size
 
         _validate_adata(adata, group_key, rank_key, gene_symbols_column)
@@ -138,12 +133,15 @@ class CyteType:
             self.group_metadata = _aggregate_metadata(
                 adata=self.adata,
                 group_key=self.group_key,
-                min_percentage=10,
+                min_percentage=min_percentage,
             )
             # Replace keys in group_metadata using cluster_map
             self.group_metadata = {
                 self.cluster_map.get(str(key), str(key)): value
                 for key, value in self.group_metadata.items()
+            }
+            self.group_metadata = {
+                k: self.group_metadata[k] for k in sorted(self.group_metadata.keys())
             }
         else:
             self.group_metadata = {}
@@ -155,6 +153,7 @@ class CyteType:
         study_context: str,
         model_config: list[dict[str, Any]] | None = None,
         run_config: dict[str, Any] | None = None,
+        results_prefix: str = "cytetype",
         poll_interval_seconds: int = DEFAULT_POLL_INTERVAL,
         timeout_seconds: int = DEFAULT_TIMEOUT,
         api_url: str = DEFAULT_API_URL,
@@ -171,8 +170,11 @@ class CyteType:
                 models to be used. Each dict must include 'provider', 'name', 'apiKey', 'baseUrl' (optional), 'modelSettings' (optional).
                 Defaults to None, using the API's default model.
             run_config (dict[str, Any] | None, optional): Configuration for the annotation run.
-                Can include 'concurrentClusters', 'maxAnnotationRevisions', 'maxLLMRequests'.
+                Can include 'maxAnnotationRevisions'.
                 Defaults to None, using the API's default settings.
+            results_prefix (str, optional): Prefix for keys added to `adata.obs` and `adata.uns` to
+                store results. The final annotation column will be
+                `adata.obs[f"{results_key}_{group_key}"]`. Defaults to "cytetype".
             poll_interval_seconds (int, optional): How often (in seconds) to check for results from
                 the API. Defaults to DEFAULT_POLL_INTERVAL.
             timeout_seconds (int, optional): Maximum time (in seconds) to wait for API results before
@@ -253,23 +255,33 @@ class CyteType:
         )
 
         # Store results in AnnData object
-        self.adata.uns[f"{self.results_prefix}_results"] = {
+        self.adata.uns[f"{results_prefix}_results"] = {
             "job_id": job_id,
             "result": result,
         }
 
-        # Create annotation mapping and add to observations
         annotation_map = {
             item["clusterId"]: item["annotation"]
             for item in result.get("annotations", [])
         }
-        self.adata.obs[f"{self.results_prefix}_{self.group_key}"] = pd.Series(
-            [
-                annotation_map.get(cluster_id, "Unknown Annotation")
-                for cluster_id in self.clusters
-            ],
+        self.adata.obs[f"{results_prefix}_annotation_{self.group_key}"] = pd.Series(
+            [annotation_map.get(cluster_id, "Unknown") for cluster_id in self.clusters],
             index=self.adata.obs.index,
         ).astype("category")
+
+        ontology_map = {
+            item["clusterId"]: item["ontologyTerm"]
+            for item in result.get("annotations", [])
+        }
+        self.adata.obs[f"{results_prefix}_cellOntologyTerm_{self.group_key}"] = (
+            pd.Series(
+                [
+                    ontology_map.get(cluster_id, "Unknown")
+                    for cluster_id in self.clusters
+                ],
+                index=self.adata.obs.index,
+            ).astype("category")
+        )
 
         # Check for unannotated clusters
         unannotated_clusters = set(
@@ -286,9 +298,10 @@ class CyteType:
                 f"Corresponding cells marked as 'Unknown Annotation'."
             )
 
-        logger.info(
-            f"Annotations successfully added to `adata.obs['{self.results_prefix}_{self.group_key}']` "
-            f"and `adata.uns['{self.results_prefix}_results']`."
+        logger.success(
+            f"Annotations successfully added to `adata.obs['{results_prefix}_annotation_{self.group_key}']` "
+            f", ontology term added to `adata.obs['{results_prefix}_cellOntologyTerm_{self.group_key}']` "
+            f"and, full results added to `adata.uns['{results_prefix}_results']`."
         )
 
         return self.adata

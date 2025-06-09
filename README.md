@@ -40,7 +40,8 @@ adata = annotator.run(
 )
 
 # View results
-print(adata.obs.cytetype_clusters)
+print(adata.obs.cytetype_annotation_clusters)
+print(adata.obs.cytetype_cellOntologyTerm_clusters)
 ```
 
 ## Installation
@@ -88,7 +89,8 @@ adata = annotator.run(
 )
 
 # Results are stored in:
-# - adata.obs.cytetype_clusters (cell type annotations)
+# - adata.obs.cytetype_annotation_clusters (cell type annotations)
+# - adata.obs.cytetype_cellOntologyTerm_clusters (cell ontology terms)
 # - adata.uns['cytetype_results'] (full API response)
 ```
 
@@ -114,7 +116,9 @@ annotator = CyteType(
     rank_key='rank_genes_groups',          # DE results key (default)
     gene_symbols_column='gene_symbols',    # Gene symbols column (default)
     n_top_genes=50,                        # Top marker genes per cluster
-    results_prefix='cytetype'              # Prefix for result columns
+    aggregate_metadata=True,               # Aggregate metadata (default)
+    min_percentage=10,                     # Min percentage for cluster context
+    pcent_batch_size=2000,                 # Batch size for calculations
 )
 ```
 
