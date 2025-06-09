@@ -86,9 +86,9 @@ def test_cytetype_success(
     mock_submit.return_value = job_id
     mock_result: dict[str, list[dict[str, str]]] = {
         "annotations": [
-            {"clusterId": "1", "annotation": "Cell Type A"},  # Corresponds to '0'
-            {"clusterId": "2", "annotation": "Cell Type B"},  # Corresponds to '1'
-            {"clusterId": "3", "annotation": "Cell Type C"},  # Corresponds to '2'
+            {"clusterId": "1", "annotation": "Cell Type A", "ontologyTerm": "CL:0000001"},  # Corresponds to '0'
+            {"clusterId": "2", "annotation": "Cell Type B", "ontologyTerm": "CL:0000002"},  # Corresponds to '1'
+            {"clusterId": "3", "annotation": "Cell Type C", "ontologyTerm": "CL:0000003"},  # Corresponds to '2'
         ]
     }
     mock_poll.return_value = mock_result
@@ -102,10 +102,11 @@ def test_cytetype_success(
         mock_adata,
         group_key=group_key,
         rank_key=rank_key,
-        results_prefix=result_prefix,
         n_top_genes=5,
     )
-    adata_result = cytetype.run(study_context="Test study context")
+    adata_result = cytetype.run(
+        study_context="Test study context", results_prefix=result_prefix
+    )
 
     # Check mocks called correctly
     mock_submit.assert_called_once()
@@ -125,7 +126,7 @@ def test_cytetype_success(
     assert "job_id" in adata_result.uns[f"{result_prefix}_results"]
     assert adata_result.uns[f"{result_prefix}_results"]["result"] == mock_result
 
-    obs_key = f"{result_prefix}_{group_key}"
+    obs_key = f"{result_prefix}_annotation_{group_key}"
     assert obs_key in adata_result.obs
     assert isinstance(adata_result.obs[obs_key].dtype, pd.CategoricalDtype)
 
@@ -241,9 +242,9 @@ def test_cytetype_with_auth_token(
     mock_submit.return_value = job_id
     mock_result: dict[str, list[dict[str, str]]] = {
         "annotations": [
-            {"clusterId": "1", "annotation": "Cell Type A"},
-            {"clusterId": "2", "annotation": "Cell Type B"},
-            {"clusterId": "3", "annotation": "Cell Type C"},
+            {"clusterId": "1", "annotation": "Cell Type A", "ontologyTerm": "CL:0000001"},
+            {"clusterId": "2", "annotation": "Cell Type B", "ontologyTerm": "CL:0000002"},
+            {"clusterId": "3", "annotation": "Cell Type C", "ontologyTerm": "CL:0000003"},
         ]
     }
     mock_poll.return_value = mock_result
