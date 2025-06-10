@@ -45,6 +45,9 @@ def mock_adata() -> anndata.AnnData:
     adata = anndata.AnnData(X=X, obs=obs, var=var)
     # No need for adata.raw based on current anndata_helpers
 
+    # Add mock coordinates for visualization
+    adata.obsm["X_umap"] = rng.random((n_obs, 2)) * 10  # 2D coordinates
+
     # Simulate rank_genes_groups results for cluster '0', '1', '2'
     # Assume this was run beforehand by the user
     group_names = ["0", "1", "2"]
@@ -136,7 +139,11 @@ def test_cytetype_success(
     # Check results added to AnnData
     assert f"{result_prefix}_results" in adata_result.uns
     assert "job_id" in adata_result.uns[f"{result_prefix}_results"]
-    assert adata_result.uns[f"{result_prefix}_results"]["result"] == mock_result
+    # Result is now stored as JSON string for HDF5 compatibility
+    import json
+
+    stored_result = json.loads(adata_result.uns[f"{result_prefix}_results"]["result"])
+    assert stored_result == mock_result
 
     obs_key = f"{result_prefix}_annotation_{group_key}"
     assert obs_key in adata_result.obs
@@ -289,6 +296,129 @@ def test_cytetype_with_auth_token(
     poll_call_kwargs = mock_poll.call_args.kwargs
     assert "auth_token" in poll_call_kwargs
     assert poll_call_kwargs["auth_token"] == auth_token
+
+
+@patch("cytetype.main.submit_job")
+@patch("cytetype.main.poll_for_results")
+def test_cytetype_get_results_helper(
+    mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
+) -> None:
+    """Test the get_results() helper method."""
+    job_id = "mock_job_get_results"
+    mock_submit.return_value = job_id
+    mock_result: dict[str, list[dict[str, str]]] = {
+        "annotations": [
+            {
+                "clusterId": "1",
+                "annotation": "Cell Type A",
+                "ontologyTerm": "CL:0000001",
+            },
+        ]
+    }
+    mock_poll.return_value = mock_result
+
+    cytetype = CyteType(mock_adata, group_key="leiden")
+    cytetype.run(study_context="Test study context")
+
+    # Test the helper method
+    retrieved_result = cytetype.get_results()
+    assert retrieved_result == mock_result
+    assert "annotations" in retrieved_result
+    assert len(retrieved_result["annotations"]) == 1
+    assert retrieved_result["annotations"][0]["annotation"] == "Cell Type A"
+
+    # Test with custom prefix
+    cytetype.run(study_context="Test study context", results_prefix="custom")
+    custom_result = cytetype.get_results(results_prefix="custom")
+    assert custom_result == mock_result
+
+    # Test when no results exist - use a fresh adata object
+    fresh_adata = anndata.AnnData(
+        X=mock_adata.X.copy(), obs=mock_adata.obs.copy(), var=mock_adata.var.copy()
+    )
+    fresh_adata.obsm = mock_adata.obsm.copy()
+    fresh_adata.uns = mock_adata.uns.copy()
+    # Remove any existing results
+    fresh_adata.uns = {
+        k: v for k, v in fresh_adata.uns.items() if not k.endswith("_results")
+    }
+
+    empty_cytetype = CyteType(fresh_adata, group_key="leiden")
+    no_result = empty_cytetype.get_results()
+    assert no_result is None
+
+
+@patch("cytetype.main.submit_job")
+@patch("cytetype.main.poll_for_results")
+def test_cytetype_with_metadata(
+    mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
+) -> None:
+    """Test that metadata is correctly passed to the API query but not stored in results."""
+    job_id = "mock_job_with_metadata"
+    mock_submit.return_value = job_id
+    mock_result: dict[str, list[dict[str, str]]] = {
+        "annotations": [
+            {
+                "clusterId": "1",
+                "annotation": "Cell Type A",
+                "ontologyTerm": "CL:0000001",
+            },
+        ]
+    }
+    mock_poll.return_value = mock_result
+
+    test_metadata = {
+        "experiment_name": "Test Experiment",
+        "run_label": "test_run_001",
+        "user_id": "test_user",
+        "description": "Testing metadata functionality",
+    }
+
+    cytetype = CyteType(mock_adata, group_key="leiden")
+    cytetype.run(study_context="Test study context", metadata=test_metadata)
+
+    # Check that submit_job was called with metadata in the query
+    mock_submit.assert_called_once()
+    query_arg, _ = mock_submit.call_args[0]
+    assert "metadata" in query_arg
+    assert query_arg["metadata"] == test_metadata
+    assert query_arg["metadata"]["experiment_name"] == "Test Experiment"
+    assert query_arg["metadata"]["run_label"] == "test_run_001"
+
+    # Check that metadata is NOT stored in the results
+    assert "cytetype_results" in cytetype.adata.uns
+    stored_results = cytetype.adata.uns["cytetype_results"]
+    assert "metadata" not in stored_results
+    assert "job_id" in stored_results
+    assert "result" in stored_results
+
+
+@patch("cytetype.main.submit_job")
+@patch("cytetype.main.poll_for_results")
+def test_cytetype_without_metadata(
+    mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
+) -> None:
+    """Test that when no metadata is provided, no metadata field is sent to API."""
+    job_id = "mock_job_no_metadata"
+    mock_submit.return_value = job_id
+    mock_result: dict[str, list[dict[str, str]]] = {
+        "annotations": [
+            {
+                "clusterId": "1",
+                "annotation": "Cell Type A",
+                "ontologyTerm": "CL:0000001",
+            },
+        ]
+    }
+    mock_poll.return_value = mock_result
+
+    cytetype = CyteType(mock_adata, group_key="leiden")
+    cytetype.run(study_context="Test study context")  # No metadata provided
+
+    # Check that submit_job was called without metadata in the query
+    mock_submit.assert_called_once()
+    query_arg, _ = mock_submit.call_args[0]
+    assert "metadata" not in query_arg
 
 
 # --- TODO ---

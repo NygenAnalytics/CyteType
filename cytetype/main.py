@@ -67,6 +67,7 @@ class CyteType:
         aggregate_metadata: bool = True,
         min_percentage: int = 10,
         pcent_batch_size: int = 2000,
+        coordinates_key: str = "X_umap",
     ) -> None:
         """Initialize CyteType with AnnData object and perform data preparation.
 
@@ -89,6 +90,9 @@ class CyteType:
                 cluster context. Defaults to 10.
             pcent_batch_size (int, optional): Batch size for calculating expression percentages to
                 optimize memory usage. Defaults to 2000.
+            coordinates_key (str, optional): Key in adata.obsm containing 2D coordinates for
+                visualization. Must be a 2D array with same number of elements as clusters.
+                Defaults to "X_umap".
 
         Raises:
             KeyError: If the required keys are missing in `adata.obs` or `adata.uns`
@@ -100,6 +104,7 @@ class CyteType:
         self.gene_symbols_column = gene_symbols_column
         self.n_top_genes = n_top_genes
         self.pcent_batch_size = pcent_batch_size
+        self.coordinates_key = coordinates_key
 
         _validate_adata(adata, group_key, rank_key, gene_symbols_column)
 
@@ -146,6 +151,29 @@ class CyteType:
         else:
             self.group_metadata = {}
 
+        # Prepare visualization data
+        logger.info("Preparing visualization data.")
+        if coordinates_key not in adata.obsm:
+            raise KeyError(
+                f"Coordinates key '{coordinates_key}' not found in adata.obsm"
+            )
+
+        coordinates = adata.obsm[coordinates_key]
+        if coordinates.shape[0] != len(self.clusters):
+            raise ValueError(
+                f"Number of coordinates ({coordinates.shape[0]}) must match number of cells "
+                f"({len(self.clusters)})"
+            )
+        if coordinates.shape[1] != 2:
+            raise ValueError(
+                f"Coordinates must be 2D, but got shape {coordinates.shape}"
+            )
+
+        self.visualization_data = {
+            "coordinates": coordinates.tolist(),
+            "clusters": self.clusters,
+        }
+
         logger.info("Data preparation completed. Ready for submitting jobs.")
 
     def run(
@@ -153,6 +181,7 @@ class CyteType:
         study_context: str,
         model_config: list[dict[str, Any]] | None = None,
         run_config: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
         results_prefix: str = "cytetype",
         poll_interval_seconds: int = DEFAULT_POLL_INTERVAL,
         timeout_seconds: int = DEFAULT_TIMEOUT,
@@ -172,6 +201,10 @@ class CyteType:
             run_config (dict[str, Any] | None, optional): Configuration for the annotation run.
                 Can include 'maxAnnotationRevisions'.
                 Defaults to None, using the API's default settings.
+            metadata (dict[str, Any] | None, optional): Custom metadata to send with the API request.
+                Can include information like run labels, experiment names, or any other user-defined data.
+                This metadata will be sent to the API for tracking purposes but not stored locally.
+                Defaults to None.
             results_prefix (str, optional): Prefix for keys added to `adata.obs` and `adata.uns` to
                 store results. The final annotation column will be
                 `adata.obs[f"{results_key}_{group_key}"]`. Defaults to "cytetype".
@@ -226,7 +259,12 @@ class CyteType:
             "expressionData": self.expression_percentages,
             "modelConfig": model_config_list,
             "runConfig": run_config_dict,
+            "visualizationData": self.visualization_data,
         }
+
+        # Add metadata if provided
+        if metadata is not None:
+            query["metadata"] = metadata
 
         if save_query:
             with open("query.json", "w") as f:
@@ -255,9 +293,10 @@ class CyteType:
         )
 
         # Store results in AnnData object
+        # Convert result to JSON string for HDF5 compatibility
         self.adata.uns[f"{results_prefix}_results"] = {
             "job_id": job_id,
-            "result": result,
+            "result": json.dumps(result),  # Convert to JSON string
         }
 
         annotation_map = {
@@ -305,3 +344,29 @@ class CyteType:
         )
 
         return self.adata
+
+    def get_results(self, results_prefix: str = "cytetype") -> dict[str, Any] | None:
+        """Retrieve the CyteType results from the AnnData object.
+
+        Args:
+            results_prefix (str): The prefix used when storing results. Defaults to "cytetype".
+
+        Returns:
+            dict[str, Any] | None: The original result dictionary from the API, or None if not found.
+        """
+        results_key = f"{results_prefix}_results"
+        if results_key not in self.adata.uns:
+            return None
+
+        stored_results = self.adata.uns[results_key]
+        if "result" not in stored_results:
+            return None
+
+        # The result is stored as a JSON string for HDF5 compatibility
+        try:
+            result = json.loads(stored_results["result"])
+            return result if isinstance(result, dict) else None
+        except (json.JSONDecodeError, TypeError):
+            # Fallback for cases where result might still be a dict (backwards compatibility)
+            result = stored_results["result"]
+            return result if isinstance(result, dict) else None
