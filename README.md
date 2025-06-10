@@ -88,6 +88,15 @@ adata = annotator.run(
     study_context="Adult human brain tissue samples from healthy controls and Alzheimer's disease patients, analyzed using 10X Genomics single-cell RNA-seq. Samples include cortical and hippocampal regions."
 )
 
+# Or with custom metadata for tracking
+adata = annotator.run(
+    study_context="Adult human brain tissue samples from healthy controls and Alzheimer's disease patients, analyzed using 10X Genomics single-cell RNA-seq. Samples include cortical and hippocampal regions.",
+    metadata={
+        'experiment_name': 'Brain_AD_Study',
+        'run_label': 'initial_analysis'
+    }
+)
+
 # Results are stored in:
 # - adata.obs.cytetype_annotation_clusters (cell type annotations)
 # - adata.obs.cytetype_cellOntologyTerm_clusters (cell ontology terms)
@@ -167,6 +176,14 @@ adata = annotator.run(
         'maxLLMRequests': 500           # Default: 500, Range: 50-2000
     },
     
+    # Custom metadata for tracking
+    metadata={
+        'experiment_name': 'PBMC_COVID_Study',
+        'run_label': 'baseline_analysis',
+        'researcher': 'Dr. Smith',
+        'batch': 'batch_001'
+    },
+    
     # API polling and timeout settings
     poll_interval_seconds=10,           # How often to check for results
     timeout_seconds=1200,               # Max wait time (20 minutes)
@@ -186,6 +203,7 @@ adata = annotator.run(
 
 #### Additional Run Parameters
 
+- **`metadata`** (dict, optional): Custom metadata to send with the API request for tracking purposes. Can include experiment names, run labels, researcher information, or any other user-defined data. This metadata is sent to the API but not stored locally with results.
 - **`poll_interval_seconds`** (int, default=30): How frequently to check the API for job completion.
 - **`timeout_seconds`** (int, default=3600): Maximum time to wait for results before timing out.
 - **`api_url`** (str): Custom API endpoint URL for self-hosted deployments.
@@ -224,8 +242,12 @@ During `PROCESSING`, you can:
 Results include detailed annotations for each cluster:
 
 ```python
-# Access results after annotation
-results = adata.uns['cytetype_results']['result']
+# Access results after annotation using the helper method
+results = annotator.get_results()
+
+# Or access directly from the stored JSON string
+import json
+results = json.loads(adata.uns['cytetype_results']['result'])
 
 # Each annotation includes:
 for annotation in results['annotations']:
