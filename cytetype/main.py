@@ -260,6 +260,7 @@ class CyteType:
             "modelConfig": model_config_list,
             "runConfig": run_config_dict,
             "visualizationData": self.visualization_data,
+            "clusterLabels": {v: k for k, v in self.cluster_map.items()},
         }
 
         # Add metadata if provided
