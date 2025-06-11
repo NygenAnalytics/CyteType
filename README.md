@@ -8,12 +8,16 @@
   <a href="https://github.com/NygenAnalytics/cytetype/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg" alt="License: CC BY-NC-SA 4.0">
   </a>
-  <img src="https://img.shields.io/badge/python-≥3.12-blue.svg" alt="Python Version">
+  <img src="https://img.shields.io/badge/python-≥3.11-blue.svg" alt="Python Version">
 </p>
 
 ---
 
 **CyteType** is a Python package for deep chracterization of cell clusters from single-cell RNA-seq data. This package interfaces with Anndata objects to call CyteType API.
+
+## Example Report
+
+View a sample annotation report: [CyteType Report](https://cytetype.nygen.io/report/6263d2ba-0865-4edb-bec1-06b35be4e80b)
 
 ## Quick Start
 
@@ -258,10 +262,6 @@ for annotation in results['annotations']:
     print(f"Supporting Markers: {annotation['supportingMarkers']}")
     print(f"Justification: {annotation['justification']}")
 ```
-
-## Example Report
-
-View a sample annotation report: [CyteType Report](https://cytetype.nygen.io/report/5ad447a9-613c-4214-bcd4-01558809f343)
 
 ## Development
 
