@@ -188,6 +188,7 @@ class CyteType:
         timeout_seconds: int = DEFAULT_TIMEOUT,
         api_url: str = DEFAULT_API_URL,
         save_query: bool = True,
+        query_filename: str = "query.json",
         auth_token: str | None = None,
     ) -> anndata.AnnData:
         """Perform cluster characterization using the CyteType API.
@@ -216,6 +217,8 @@ class CyteType:
             api_url (str, optional): URL for the CyteType API endpoint. Only change if using a custom
                 deployment. Defaults to DEFAULT_API_URL.
             save_query (bool, optional): Whether to save the query to a file. Defaults to True.
+            query_filename (str, optional): Filename for saving the query when save_query is True.
+                Defaults to "query.json".
             auth_token (str | None, optional): Bearer token for API authentication. If provided,
                 will be included in the Authorization header as "Bearer {auth_token}". Defaults to None.
 
@@ -269,7 +272,7 @@ class CyteType:
             query["metadata"] = metadata
 
         if save_query:
-            with open("query.json", "w") as f:
+            with open(query_filename, "w") as f:
                 json.dump(query, f)
 
         # Submit job and poll for results
