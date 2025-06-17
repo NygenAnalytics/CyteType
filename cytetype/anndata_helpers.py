@@ -13,7 +13,7 @@ def _validate_adata(
     coordinates_key: str,
 ) -> str:
     """Validate the AnnData object structure and return the best available coordinates key.
-    
+
     Returns:
         str: The coordinates key that was found and validated.
     """
@@ -42,15 +42,15 @@ def _validate_adata(
         raise ValueError(
             f"'names' field in `adata.uns['{rank_genes_key}']` is missing or invalid."
         )
-    
+
     # Validate coordinates with fallback options (case-insensitive matching)
     common_coordinate_keys = [coordinates_key, "X_umap", "X_tsne", "X_pca"]
     found_coordinates_key = None
-    
+
     # Create a case-insensitive lookup for available keys
     available_keys = list(adata.obsm.keys())
     key_lookup = {key.lower(): key for key in available_keys}
-    
+
     for key in common_coordinate_keys:
         # Try case-insensitive match
         actual_key = key_lookup.get(key.lower())
@@ -60,15 +60,23 @@ def _validate_adata(
                 if coordinates.shape[1] >= 2:
                     found_coordinates_key = actual_key
                     if actual_key != key:
-                        logger.info(f"Using coordinates from '{actual_key}' (matched '{key}' case-insensitively) for visualization.")
+                        logger.info(
+                            f"Using coordinates from '{actual_key}' (matched '{key}' case-insensitively) for visualization."
+                        )
                     else:
-                        logger.info(f"Using coordinates from '{actual_key}' for visualization.")
+                        logger.info(
+                            f"Using coordinates from '{actual_key}' for visualization."
+                        )
                     break
                 else:
-                    logger.warning(f"Coordinates in '{actual_key}' have shape {coordinates.shape}, need at least 2 dimensions.")
+                    logger.warning(
+                        f"Coordinates in '{actual_key}' have shape {coordinates.shape}, need at least 2 dimensions."
+                    )
             else:
-                logger.warning(f"Coordinates in '{actual_key}' have {coordinates.shape[0]} rows, expected {adata.shape[0]}.")
-    
+                logger.warning(
+                    f"Coordinates in '{actual_key}' have {coordinates.shape[0]} rows, expected {adata.shape[0]}."
+                )
+
     if found_coordinates_key is None:
         logger.warning(
             f"No suitable 2D coordinates found in adata.obsm. "
@@ -77,7 +85,7 @@ def _validate_adata(
             f"Visualization will be disabled."
         )
         return None
-    
+
     return found_coordinates_key
 
 
