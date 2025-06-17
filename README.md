@@ -9,6 +9,9 @@
     <img src="https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg" alt="License: CC BY-NC-SA 4.0">
   </a>
   <img src="https://img.shields.io/badge/python-≥3.11-blue.svg" alt="Python Version">
+  <a href="https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsqRsh2N7?usp=sharing">
+    <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab">
+  </a>
 </p>
 
 ---
@@ -159,7 +162,7 @@ adata = annotator.run(
     }],
 )
 ```
-#### Rate Limiting
+#### Rate Limits
 
 If you do not provide your own model providers then the CyteType API implements rate limiting for fair usage:
 - Annotation submissions: 5 requests per hour per IP
@@ -177,7 +180,6 @@ adata = annotator.run(
     run_config={
         'concurrentClusters': 3,        # Default: 3, Range: 2-10
         'maxAnnotationRevisions': 2,    # Default: 2, Range: 1-5
-        'maxLLMRequests': 500           # Default: 500, Range: 50-2000
     },
     
     # Custom metadata for tracking
@@ -203,7 +205,6 @@ adata = annotator.run(
 
 - **`concurrentClusters`** (int, default=5, range=2-30): Maximum number of clusters to process simultaneously. Higher values may speed up processing but can cause rate limit errors from LLM API providers.
 - **`maxAnnotationRevisions`** (int, default=2, range=1-5): Maximum number of refinement iterations based on reviewer feedback. More revisions may improve annotation quality but increase processing time.
-- **`maxLLMRequests`** (int, default=500, range=50-2000): Maximum total number of LLM API calls allowed for the entire job. The job will be terminated if this limit is reached. Helps control costs and prevents runaway processes.
 
 #### Additional Run Parameters
 
@@ -224,22 +225,7 @@ CyteType performs comprehensive cell type annotation through an automated pipeli
 - **Ontology Mapping**: Maps identified cell types to Cell Ontology terms (e.g., `CL_0000127`)  
 - **Review & Justification**: Analyzes supporting/conflicting markers and assesses confidence
 - **Alternative Suggestions**: Provides potential alternative annotations when applicable
-- **Real-time Progress**: Updates results incrementally as clusters are processed
 
-### Job Status and Progress
-
-When you submit an annotation job, it progresses through several stages:
-
-- **PENDING**: Job is queued and waiting to start
-- **PROCESSING**: Job is actively running with incremental results available
-- **COMPLETED**: All clusters have been annotated successfully
-- **FAILED**: Processing encountered an error
-
-During `PROCESSING`, you can:
-- Monitor progress through the report URL
-- View partial results for completed clusters
-- See biological context summaries
-- Track completion status
 
 ### Result Format
 
@@ -253,14 +239,25 @@ results = annotator.get_results()
 import json
 results = json.loads(adata.uns['cytetype_results']['result'])
 
-# Each annotation includes:
+# Each annotation includes comprehensive information:
 for annotation in results['annotations']:
     print(f"Cluster: {annotation['clusterId']}")
     print(f"Cell Type: {annotation['annotation']}")
+    print(f"Granular Annotation: {annotation['granularAnnotation']}")
+    print(f"Cell State: {annotation['cellState']}")
     print(f"Confidence: {annotation['confidence']}")
     print(f"Ontology Term: {annotation['ontologyTerm']}")
+    print(f"Is Approved: {annotation['is_approved']}")
+    print(f"Is Heterogeneous: {annotation['isHeterogeneous']}")
     print(f"Supporting Markers: {annotation['supportingMarkers']}")
+    print(f"Conflicting Markers: {annotation['conflictingMarkers']}")
+    print(f"Missing Expression: {annotation['missingExpression']}")
+    print(f"Unexpected Expression: {annotation['unexpectedExpression']}")
+    print(f"Alternative Annotations: {annotation['alternativeAnnotations']}")
     print(f"Justification: {annotation['justification']}")
+    print(f"Review Comments: {annotation['reviewComments']}")
+    print(f"Feedback: {annotation['feedback']}")
+    print(f"Similarity: {annotation['similarity']}")
 ```
 
 ## Development

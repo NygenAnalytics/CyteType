@@ -158,7 +158,9 @@ def test_poll_for_results_error_status(
     }
     mock_get.return_value = mock_response_error
 
-    with pytest.raises(CyteTypeJobError, match="Server error: job failed"):
+    with pytest.raises(
+        CyteTypeJobError, match="Server error: Annotation failed internally"
+    ):
         poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5)
     mock_get.assert_called_once()
     # Assert only the initial sleep(10) happened
@@ -198,11 +200,12 @@ def test_poll_for_results_api_error(mock_get: MagicMock, mock_sleep: MagicMock) 
     )
     mock_get.return_value = mock_response
 
-    with pytest.raises(CyteTypeAPIError, match="Network error while fetching results"):
-        poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5)
-    mock_get.assert_called_once()
-    # Assert only the initial sleep(10) happened
-    mock_sleep.assert_called_once_with(10)
+    with pytest.raises(CyteTypeTimeoutError, match="Timeout while fetching results"):
+        poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=2)
+    # The function will keep retrying until timeout, so call count will be high
+    assert mock_get.call_count > 1
+    # Assert initial sleep(10) happened
+    assert mock_sleep.call_count >= 1
 
 
 @patch("cytetype.client.time.sleep", return_value=None)
@@ -213,11 +216,12 @@ def test_poll_for_results_connection_error(
     """Test polling failure due to connection error."""
     mock_get.side_effect = requests.exceptions.RequestException("Connection failed")
 
-    with pytest.raises(CyteTypeAPIError, match="Network error while fetching results"):
-        poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5)
-    mock_get.assert_called_once()
-    # Assert only the initial sleep(10) happened
-    mock_sleep.assert_called_once_with(10)
+    with pytest.raises(CyteTypeTimeoutError, match="Timeout while fetching results"):
+        poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=2)
+    # The function will keep retrying until timeout, so call count will be high
+    assert mock_get.call_count > 1
+    # Assert initial sleep(10) happened
+    assert mock_sleep.call_count >= 1
 
 
 @patch("cytetype.client.time.sleep", return_value=None)
@@ -233,13 +237,12 @@ def test_poll_for_results_invalid_json(
     )
     mock_get.return_value = mock_response
 
-    with pytest.raises(
-        CyteTypeAPIError, match="Invalid response while fetching results"
-    ):
-        poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5)
-    mock_get.assert_called_once()
-    # Assert only the initial sleep(10) happened
-    mock_sleep.assert_called_once_with(10)
+    with pytest.raises(CyteTypeTimeoutError, match="Timeout while fetching results"):
+        poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=2)
+    # The function will keep retrying until timeout, so call count will be high
+    assert mock_get.call_count > 1
+    # Assert initial sleep(10) happened
+    assert mock_sleep.call_count >= 1
 
 
 @patch("cytetype.client.time.sleep", return_value=None)
@@ -255,7 +258,7 @@ def test_poll_for_results_missing_keys(
     mock_get.return_value = mock_response_complete
 
     with pytest.raises(
-        CyteTypeAPIError, match="Invalid response while parsing results"
+        CyteTypeJobError, match="Server error: Invalid response format from API"
     ):
         poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5)
     mock_get.assert_called_once()

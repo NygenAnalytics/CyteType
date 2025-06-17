@@ -6,6 +6,103 @@ from .config import logger
 from .exceptions import CyteTypeAPIError, CyteTypeTimeoutError, CyteTypeJobError
 
 
+def _make_results_request(
+    job_id: str,
+    api_url: str,
+    auth_token: str | None = None,
+) -> dict[str, Any]:
+    """Make a single request to check job results status.
+
+    This is a shared helper function for both polling and single status checks.
+
+    Args:
+        job_id: The job ID to check
+        api_url: The API base URL
+        auth_token: Bearer token for API authentication
+
+    Returns:
+        A dictionary containing:
+        - 'status': The job status ('completed', 'processing', 'pending', 'error', 'not_found')
+        - 'result': The result data if status is 'completed'
+        - 'message': Status message or error message
+        - 'raw_response': The raw API response for debugging
+
+    Raises:
+        CyteTypeAPIError: For network or API response errors
+    """
+    results_url = f"{api_url}/results/{job_id}"
+
+    # Prepare headers for authenticated requests
+    headers = {}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+
+    try:
+        response = requests.get(results_url, headers=headers, timeout=30)
+
+        if response.status_code == 404:
+            return {
+                "status": "not_found",
+                "result": None,
+                "message": "Job results not yet available",
+                "raw_response": None,
+            }
+
+        response.raise_for_status()
+        data = response.json()
+        status = data.get("status")
+
+        if status == "completed":
+            result_data = data.get("result")
+            if not isinstance(result_data, dict) or "annotations" not in result_data:
+                return {
+                    "status": "error",
+                    "result": None,
+                    "message": "Invalid response format from API",
+                    "raw_response": data,
+                }
+            return {
+                "status": "completed",
+                "result": result_data,
+                "message": "Job completed successfully",
+                "raw_response": data,
+            }
+
+        elif status == "error":
+            error_message = data.get("message", "Unknown error")
+            return {
+                "status": "error",
+                "result": None,
+                "message": error_message,
+                "raw_response": data,
+            }
+
+        elif status in ["processing", "pending"]:
+            return {
+                "status": status,
+                "result": None,
+                "message": f"Job is {status}",
+                "raw_response": data,
+            }
+
+        else:
+            return {
+                "status": "unknown",
+                "result": None,
+                "message": f"Unknown job status: {status}",
+                "raw_response": data,
+            }
+
+    except requests.exceptions.RequestException as e:
+        logger.debug(f"Network error during request for job {job_id}: {e}")
+        raise CyteTypeAPIError(f"Network error while checking job status: {e}") from e
+    except (ValueError, KeyError, requests.exceptions.JSONDecodeError) as e:
+        logger.debug(f"Error processing response for job {job_id}: {e}")
+        raise CyteTypeAPIError(
+            f"Invalid response while checking job status: {e}"
+        ) from e
+
+
 def submit_job(
     payload: dict[str, Any],
     api_url: str,
@@ -81,14 +178,13 @@ def poll_for_results(
 
     time.sleep(10)  # Initial delay before first poll
 
-    results_url = f"{api_url}/results/{job_id}"
     logs_url = f"{api_url}/logs/{job_id}"
-    logger.debug(f"Polling for results for job {job_id} at {results_url}")
+    logger.debug(f"Polling for results for job {job_id}")
     logger.debug(f"Fetching logs for job {job_id} from {logs_url}")
     start_time = time.time()
     last_logs = ""  # Initialize variable to store last fetched logs
 
-    # Prepare headers for authenticated requests
+    # Prepare headers for authenticated requests (for logs)
     headers = {}
     if auth_token:
         headers["Authorization"] = f"Bearer {auth_token}"
@@ -101,38 +197,33 @@ def poll_for_results(
         logger.debug(
             f"Polling attempt for job {job_id}. Elapsed time: {elapsed_time:.1f}s"
         )
+
         try:
-            response = requests.get(results_url, headers=headers, timeout=30)
-
-            # Handle 404 specifically - results endpoint might not be ready yet
-            if response.status_code == 404:
-                logger.debug(
-                    f"Results endpoint not ready yet for job {job_id} (404). Waiting {poll_interval}s..."
-                )
-                time.sleep(poll_interval)
-                continue
-
-            response.raise_for_status()
-            data = response.json()
-            status = data.get("status")
+            # Use the shared helper function for the results request
+            status_response = _make_results_request(job_id, api_url, auth_token)
+            status = status_response["status"]
 
             if status == "completed":
                 logger.info(f"Job {job_id} completed successfully.")
-                result_data = data.get("result")
-                if (
-                    not isinstance(result_data, dict)
-                    or "annotations" not in result_data
-                ):
-                    raise CyteTypeAPIError("Invalid response while parsing results")
-                return result_data
+                result = status_response["result"]
+                # Ensure we return a proper dict[str, Any] instead of Any
+                if not isinstance(result, dict):
+                    raise CyteTypeAPIError(
+                        f"Expected dict result from API, got {type(result)}"
+                    )
+                return result
+
             elif status == "error":
-                error_message = data.get("message", "Unknown error")
-                logger.debug(f"Job {job_id} failed on the server: {error_message}")
-                raise CyteTypeJobError("Server error: job failed")
+                logger.debug(
+                    f"Job {job_id} failed on the server: {status_response['message']}"
+                )
+                raise CyteTypeJobError(f"Server error: {status_response['message']}")
+
             elif status in ["processing", "pending"]:
                 logger.debug(
                     f"Job {job_id} status: {status}. Checking logs and waiting {poll_interval}s..."
                 )
+                # Fetch logs (this is specific to polling, not in the shared function)
                 try:
                     log_response = requests.get(
                         logs_url, headers=headers, timeout=10
@@ -149,30 +240,52 @@ def poll_for_results(
                     logger.warning(f"Could not fetch logs for job {job_id}: {log_err}")
 
                 time.sleep(poll_interval)
+
+            elif status == "not_found":
+                logger.debug(
+                    f"Results endpoint not ready yet for job {job_id} (404). Waiting {poll_interval}s..."
+                )
+                time.sleep(poll_interval)
+
             else:
                 logger.warning(
                     f"Job {job_id} has unknown status: '{status}'. Continuing to poll."
                 )
                 time.sleep(poll_interval)
 
-        except requests.exceptions.Timeout as e:
-            logger.debug(
-                f"Timeout during a polling request for {job_id}: {e}. Retrying..."
-            )
-            time.sleep(min(poll_interval, 5))
+        except CyteTypeAPIError as e:
+            # Handle timeout specifically for polling
+            if "Network error" in str(e):
+                logger.debug(
+                    f"Network error during polling request for {job_id}: {e}. Retrying..."
+                )
+                time.sleep(min(poll_interval, 5))
+            else:
+                # Re-raise other API errors
+                raise
 
-        except (ValueError, KeyError, requests.exceptions.JSONDecodeError) as e:
-            # Catch JSON/Key/Value errors before broad RequestException
-            raise CyteTypeAPIError("Invalid response while fetching results") from e
 
-        except requests.exceptions.RequestException as e:
-            error_details = "No response details available"
-            if e.response is not None:
-                try:
-                    error_details = e.response.json()
-                except requests.exceptions.JSONDecodeError:
-                    error_details = e.response.text
-            logger.debug(
-                f"Network error during polling request for job {job_id}: {e}. Details: {error_details}"
-            )
-            raise CyteTypeAPIError("Network error while fetching results") from e
+def check_job_status(
+    job_id: str,
+    api_url: str,
+    auth_token: str | None = None,
+) -> dict[str, Any]:
+    """Check the status of a job with a single API call (no polling).
+
+    Args:
+        job_id: The job ID to check status for
+        api_url: The API base URL
+        auth_token: Bearer token for API authentication
+
+    Returns:
+        A dictionary containing:
+        - 'status': The job status ('completed', 'processing', 'pending', 'error', 'not_found')
+        - 'result': The result data if status is 'completed'
+        - 'message': Error message if status is 'error'
+        - 'raw_response': The raw API response for debugging
+    """
+
+    logger.debug(f"Checking status for job {job_id}")
+
+    # Use the shared helper function
+    return _make_results_request(job_id, api_url, auth_token)
