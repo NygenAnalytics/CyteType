@@ -72,7 +72,11 @@ def mock_adata() -> anndata.AnnData:
 def test_validate_adata_success(mock_adata: anndata.AnnData) -> None:
     """Test validation passes with a correctly formatted AnnData object."""
     _validate_adata(
-        mock_adata, "leiden", "rank_genes_groups", gene_symbols_col="gene_symbols"
+        mock_adata,
+        "leiden",
+        "rank_genes_groups",
+        gene_symbols_col="gene_symbols",
+        coordinates_key="X_umap",
     )  # Should not raise
 
 
@@ -84,6 +88,7 @@ def test_validate_adata_missing_group(mock_adata: anndata.AnnData) -> None:
             "unknown_key",
             "rank_genes_groups",
             gene_symbols_col="gene_symbols",
+            coordinates_key="X_umap",
         )
 
 
@@ -92,7 +97,11 @@ def test_validate_adata_missing_x(mock_adata: anndata.AnnData) -> None:
     mock_adata.X = None
     with pytest.raises(ValueError, match="`adata.X` is required"):
         _validate_adata(
-            mock_adata, "leiden", "rank_genes_groups", gene_symbols_col="gene_symbols"
+            mock_adata,
+            "leiden",
+            "rank_genes_groups",
+            gene_symbols_col="gene_symbols",
+            coordinates_key="X_umap",
         )
 
 
@@ -104,6 +113,7 @@ def test_validate_adata_rank_key_missing(mock_adata: anndata.AnnData) -> None:
             "leiden",
             "nonexistent_rank_key",
             gene_symbols_col="gene_symbols",
+            coordinates_key="X_umap",
         )
 
 
@@ -163,7 +173,11 @@ def test_validate_adata_groupby_mismatch(mock_adata: anndata.AnnData) -> None:
     expected_error_msg = r"`rank_genes_groups` run with groupby=\'different_group\', expected \'leiden\'."
     with pytest.raises(ValueError, match=expected_error_msg):
         _validate_adata(
-            mock_adata, "leiden", "rank_genes_groups", gene_symbols_col="gene_symbols"
+            mock_adata,
+            "leiden",
+            "rank_genes_groups",
+            gene_symbols_col="gene_symbols",
+            coordinates_key="X_umap",
         )
 
 
