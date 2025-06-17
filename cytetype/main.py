@@ -106,7 +106,11 @@ class CyteType:
         self.pcent_batch_size = pcent_batch_size
         self.coordinates_key = coordinates_key
 
-        _validate_adata(adata, group_key, rank_key, gene_symbols_column)
+        # Validate data and get the best available coordinates key
+        validated_coordinates_key = _validate_adata(
+            adata, group_key, rank_key, gene_symbols_column, coordinates_key
+        )
+        self.coordinates_key = validated_coordinates_key
 
         self.cluster_map = {
             str(x): str(n + 1)
@@ -153,26 +157,23 @@ class CyteType:
 
         # Prepare visualization data
         logger.info("Preparing visualization data.")
-        if coordinates_key not in adata.obsm:
-            raise KeyError(
-                f"Coordinates key '{coordinates_key}' not found in adata.obsm"
-            )
-
-        coordinates = adata.obsm[coordinates_key]
-        if coordinates.shape[0] != len(self.clusters):
-            raise ValueError(
-                f"Number of coordinates ({coordinates.shape[0]}) must match number of cells "
-                f"({len(self.clusters)})"
-            )
-        if coordinates.shape[1] != 2:
-            raise ValueError(
-                f"Coordinates must be 2D, but got shape {coordinates.shape}"
-            )
-
-        self.visualization_data = {
-            "coordinates": coordinates.tolist(),
-            "clusters": self.clusters,
-        }
+        if self.coordinates_key is not None:
+            coordinates = adata.obsm[self.coordinates_key]
+            # Take only the first 2 dimensions for visualization
+            if coordinates.shape[1] > 2:
+                coordinates = coordinates[:, :2]
+                logger.info(f"Using first 2 dimensions of '{self.coordinates_key}' for visualization.")
+            
+            self.visualization_data = {
+                "coordinates": coordinates.tolist(),
+                "clusters": self.clusters,
+            }
+        else:
+            logger.warning("No coordinates available, visualization will be disabled.")
+            self.visualization_data = {
+                "coordinates": None,
+                "clusters": self.clusters,
+            }
 
         logger.info("Data preparation completed. Ready for submitting jobs.")
 
