@@ -11,11 +11,11 @@ def _validate_adata(
     rank_genes_key: str,
     gene_symbols_col: str,
     coordinates_key: str,
-) -> str:
+) -> str | None:
     """Validate the AnnData object structure and return the best available coordinates key.
 
     Returns:
-        str: The coordinates key that was found and validated.
+        str | None: The coordinates key that was found and validated, or None if no suitable coordinates found.
     """
 
     if cell_group_key not in adata.obs:
@@ -45,7 +45,7 @@ def _validate_adata(
 
     # Validate coordinates with fallback options (case-insensitive matching)
     common_coordinate_keys = [coordinates_key, "X_umap", "X_tsne", "X_pca"]
-    found_coordinates_key = None
+    found_coordinates_key: str | None = None
 
     # Create a case-insensitive lookup for available keys
     available_keys = list(adata.obsm.keys())

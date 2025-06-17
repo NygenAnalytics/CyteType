@@ -205,7 +205,13 @@ def poll_for_results(
 
             if status == "completed":
                 logger.info(f"Job {job_id} completed successfully.")
-                return status_response["result"]
+                result = status_response["result"]
+                # Ensure we return a proper dict[str, Any] instead of Any
+                if not isinstance(result, dict):
+                    raise CyteTypeAPIError(
+                        f"Expected dict result from API, got {type(result)}"
+                    )
+                return result
 
             elif status == "error":
                 logger.debug(

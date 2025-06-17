@@ -57,6 +57,21 @@ class CyteType:
     multiple requests with different parameters.
     """
 
+    # Type annotations for instance attributes
+    adata: anndata.AnnData
+    group_key: str
+    rank_key: str
+    gene_symbols_column: str
+    n_top_genes: int
+    pcent_batch_size: int
+    coordinates_key: str | None
+    cluster_map: dict[str, str]
+    clusters: list[str]
+    expression_percentages: dict[str, dict[str, float]]
+    marker_genes: dict[str, list[str]]
+    group_metadata: dict[str, dict[str, dict[str, int]]]
+    visualization_data: dict[str, Any]
+
     def __init__(
         self,
         adata: anndata.AnnData,
@@ -417,11 +432,19 @@ class CyteType:
                     result = json.loads(stored_results["result"])
                     if isinstance(result, dict):
                         return result
+                    else:
+                        logger.warning(
+                            f"Expected dict from stored result, got {type(result)}"
+                        )
                 except (json.JSONDecodeError, TypeError):
                     # Fallback for cases where result might still be a dict (backwards compatibility)
                     result = stored_results["result"]
                     if isinstance(result, dict):
                         return result
+                    else:
+                        logger.warning(
+                            f"Expected dict from stored result fallback, got {type(result)}"
+                        )
 
         # If no results found locally, try to retrieve using stored job details
         job_details_key = f"{results_prefix}_jobDetails"
@@ -456,6 +479,13 @@ class CyteType:
                     f"Job {job_id} completed successfully. Storing results locally."
                 )
                 result_data = status_response["result"]
+
+                # Ensure we have a proper dict result instead of Any
+                if not isinstance(result_data, dict):
+                    logger.error(
+                        f"Expected dict result from API, got {type(result_data)}"
+                    )
+                    return None
 
                 # Store the retrieved results locally
                 self.adata.uns[results_key] = {
