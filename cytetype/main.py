@@ -194,11 +194,16 @@ class CyteType:
             results_prefix: Prefix for storing results
             check_unannotated: Whether to check and warn about unannotated clusters
         """
-        # Store results in AnnData object
+        # Store results in AnnData object (excluding marker_genes and visualization_data)
+        filtered_result_data = {
+            k: v
+            for k, v in result_data.items()
+            if k not in ["marker_genes", "visualization_data"]
+        }
         self.adata.uns[f"{results_prefix}_results"] = {
             "job_id": job_id,
             "result": json.dumps(
-                result_data
+                filtered_result_data
             ),  # Convert to JSON string for HDF5 compatibility
         }
 
