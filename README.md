@@ -62,6 +62,7 @@ pip install cytetype
 ### Required Preprocessing
 
 Your `AnnData` object must have:
+
 - Log-normalized expression data in `adata.X`
 - Cluster labels in `adata.obs` 
 - Differential expression results from `sc.tl.rank_genes_groups`
@@ -139,13 +140,14 @@ annotator = CyteType(
 ```
 
 ## Submitting Annotation job
+
 The `run` method accepts several configuration parameters to control the annotation process:
 
 ### Custom LLM Configuration
 
 The CyteType API provides access to some chosen LLM providers by default.
 Users can choose to provide their own LLM models and model providers.
-Many models can be provided simultaneously and then they will be used iteratively for each of the clusters. 
+Many models can be provided simultaneously and then they will be used iteratively for each of the clusters.
 
 ```python
 adata = annotator.run(
@@ -162,15 +164,21 @@ adata = annotator.run(
     }],
 )
 ```
+
 #### Rate Limits
 
 If you do not provide your own model providers then the CyteType API implements rate limiting for fair usage:
+
 - Annotation submissions: 5 requests per hour per IP
 - Result retrieval: 20 requests per minute per IP
 
 If you exceed rate limits, the system will return appropriate error messages with retry timing information
 
 Supported providers: `openai`, `anthropic`, `google`, `xai`, `groq`, `mistral`, `openrouter`
+
+### Custom LLM Configuration (Ollama)
+
+The CyteType API supports Ollama models as well. You will need to expose your Ollama server to the internet using a tunneling service. Refer to the [OLLAMA.md](./OLLAMA.md) file for instructions on how to do this.
 
 ### Advanced parameters
 
@@ -225,7 +233,6 @@ CyteType performs comprehensive cell type annotation through an automated pipeli
 - **Ontology Mapping**: Maps identified cell types to Cell Ontology terms (e.g., `CL_0000127`)  
 - **Review & Justification**: Analyzes supporting/conflicting markers and assesses confidence
 - **Alternative Suggestions**: Provides potential alternative annotations when applicable
-
 
 ### Result Format
 
