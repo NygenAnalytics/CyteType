@@ -3,6 +3,7 @@ import json
 
 import anndata
 import pandas as pd
+from natsort import natsorted
 from pydantic import BaseModel, Field, ConfigDict
 
 from .config import logger, DEFAULT_API_URL, DEFAULT_POLL_INTERVAL, DEFAULT_TIMEOUT
@@ -129,7 +130,7 @@ class CyteType:
 
         self.cluster_map = {
             str(x): str(n + 1)
-            for n, x in enumerate(sorted(adata.obs[group_key].unique().tolist()))
+            for n, x in enumerate(natsorted(adata.obs[group_key].unique().tolist()))
         }
         self.clusters = [
             self.cluster_map[str(x)] for x in adata.obs[group_key].values.tolist()
