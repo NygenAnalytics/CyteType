@@ -16,6 +16,8 @@
 
 ---
 
+> **⚠️ Important Notice - URL Update**: The CyteType API URL has been updated. If you have bookmarked or saved any old report links, please update them to use the new domain. The new API endpoint is now active at `https://cytetype.nygen.io`.
+
 **CyteType** is a Python package for deep chracterization of cell clusters from single-cell RNA-seq data. This package interfaces with Anndata objects to call CyteType API.
 
 ## Example Report
