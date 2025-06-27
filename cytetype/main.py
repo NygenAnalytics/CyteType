@@ -385,13 +385,6 @@ class CyteType:
             "auth_token": auth_token if auth_token else None,
         }
 
-        logger.info(f"Waiting for results for job ID: {job_id}")
-
-        # Log the report URL that updates automatically
-        logger.info(
-            f"View the automatically updating visualization report at: {report_url}"
-        )
-
         result = poll_for_results(
             job_id,
             api_url,
