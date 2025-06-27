@@ -91,7 +91,7 @@ def _validate_adata(
 
 def _extract_sampled_coordinates(
     adata: anndata.AnnData,
-    coordinates_key: str,
+    coordinates_key: str | None,
     group_key: str,
     cluster_map: dict[str, str],
     max_cells_per_group: int = 1000,
@@ -135,7 +135,7 @@ def _extract_sampled_coordinates(
     )
 
     # Sample cells from each group using pandas
-    sampled_coord_df = []
+    sampled_coords = []
     for group_label in coord_df["group"].unique():
         group_mask = coord_df["group"] == group_label
         group_size = group_mask.sum()
@@ -144,7 +144,7 @@ def _extract_sampled_coordinates(
         sampled_group = coord_df[group_mask].sample(
             n=sample_size, random_state=random_state
         )
-        sampled_coord_df.append(sampled_group)
+        sampled_coords.append(sampled_group)
 
         if group_size > max_cells_per_group:
             logger.info(
@@ -153,7 +153,7 @@ def _extract_sampled_coordinates(
             )
 
     # Concatenate all sampled groups
-    sampled_coord_df = pd.concat(sampled_coord_df, ignore_index=True)
+    sampled_coord_df: pd.DataFrame = pd.concat(sampled_coords, ignore_index=True)
 
     # Extract coordinates and labels
     sampled_coordinates = sampled_coord_df[["x", "y"]].values.tolist()
