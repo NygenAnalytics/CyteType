@@ -13,6 +13,7 @@ from .anndata_helpers import (
     _calculate_pcent,
     _get_markers,
     _aggregate_metadata,
+    _extract_sampled_coordinates,
 )
 
 __all__ = ["CyteType", "BioContext", "ModelConfig", "RunConfig"]
@@ -84,6 +85,7 @@ class CyteType:
         min_percentage: int = 10,
         pcent_batch_size: int = 2000,
         coordinates_key: str = "X_umap",
+        max_cells_per_group: int = 1000,
     ) -> None:
         """Initialize CyteType with AnnData object and perform data preparation.
 
@@ -109,6 +111,9 @@ class CyteType:
             coordinates_key (str, optional): Key in adata.obsm containing 2D coordinates for
                 visualization. Must be a 2D array with same number of elements as clusters.
                 Defaults to "X_umap".
+            max_cells_per_group (int, optional): Maximum number of cells to sample per group
+                for visualization. If a group has more cells than this limit, a random sample
+                will be taken. Defaults to 1000.
 
         Raises:
             KeyError: If the required keys are missing in `adata.obs` or `adata.uns`
@@ -121,6 +126,7 @@ class CyteType:
         self.n_top_genes = n_top_genes
         self.pcent_batch_size = pcent_batch_size
         self.coordinates_key = coordinates_key
+        self.max_cells_per_group = max_cells_per_group
 
         # Validate data and get the best available coordinates key
         validated_coordinates_key = _validate_adata(
@@ -171,27 +177,20 @@ class CyteType:
         else:
             self.group_metadata = {}
 
-        # Prepare visualization data
-        logger.info("Preparing visualization data.")
-        if self.coordinates_key is not None:
-            coordinates = adata.obsm[self.coordinates_key]
-            # Take only the first 2 dimensions for visualization
-            if coordinates.shape[1] > 2:
-                coordinates = coordinates[:, :2]
-                logger.info(
-                    f"Using first 2 dimensions of '{self.coordinates_key}' for visualization."
-                )
+        # Prepare visualization data with sampling
+        logger.info("Preparing visualization data with sampling.")
+        sampled_coordinates, sampled_cluster_labels = _extract_sampled_coordinates(
+            adata=adata,
+            coordinates_key=self.coordinates_key,
+            group_key=self.group_key,
+            cluster_map=self.cluster_map,
+            max_cells_per_group=self.max_cells_per_group,
+        )
 
-            self.visualization_data = {
-                "coordinates": coordinates.tolist(),
-                "clusters": self.clusters,
-            }
-        else:
-            logger.warning("No coordinates available, visualization will be disabled.")
-            self.visualization_data = {
-                "coordinates": None,
-                "clusters": self.clusters,
-            }
+        self.visualization_data = {
+            "coordinates": sampled_coordinates,
+            "clusters": sampled_cluster_labels,
+        }
 
         logger.info("Data preparation completed. Ready for submitting jobs.")
 
