@@ -140,7 +140,7 @@ def test_poll_for_results_success(mock_get: MagicMock, mock_sleep: MagicMock) ->
     ]
     mock_get.assert_has_calls(expected_calls)
     # Check that sleep was called for initial delay and poll interval
-    expected_sleep_calls = [call(10), call(1)]
+    expected_sleep_calls = [call(20), call(1)]
     mock_sleep.assert_has_calls(expected_sleep_calls)
 
 
@@ -163,8 +163,8 @@ def test_poll_for_results_error_status(
     ):
         poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5)
     mock_get.assert_called_once()
-    # Assert only the initial sleep(10) happened
-    mock_sleep.assert_called_once_with(10)
+    # Assert only the initial sleep(20) happened
+    mock_sleep.assert_called_once_with(20)
 
 
 @patch("cytetype.client.time.sleep", return_value=None)
@@ -262,8 +262,8 @@ def test_poll_for_results_missing_keys(
     ):
         poll_for_results(MOCK_JOB_ID, DEFAULT_API_URL, poll_interval=1, timeout=5)
     mock_get.assert_called_once()
-    # Assert only the initial sleep(10) happened
-    mock_sleep.assert_called_once_with(10)
+    # Assert only the initial sleep(20) happened
+    mock_sleep.assert_called_once_with(20)
 
 
 # --- Test auth_token functionality ---
