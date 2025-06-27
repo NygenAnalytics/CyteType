@@ -1,8 +1,93 @@
 import anndata
 import numpy as np
 import pandas as pd
+import re
 
 from .config import logger
+
+
+def _is_gene_id_like(value: str) -> bool:
+    """Check if a value looks like a gene ID rather than a gene symbol.
+
+    Common gene ID patterns:
+    - Ensembl: ENSG00000000003, ENSMUSG00000000001, etc.
+    - RefSeq: NM_000001, XM_000001, etc.
+    - Numeric IDs: just numbers
+    - Other database IDs with similar patterns
+
+    Args:
+        value: String value to check
+
+    Returns:
+        bool: True if the value looks like a gene ID, False if it looks like a gene symbol
+    """
+    if not isinstance(value, str) or not value.strip():
+        return False
+
+    value = value.strip()
+
+    # Ensembl IDs (human, mouse, etc.)
+    if re.match(r"^ENS[A-Z]*G\d{11}$", value, re.IGNORECASE):
+        return True
+
+    # RefSeq IDs
+    if re.match(r"^[NX][MR]_\d+$", value):
+        return True
+
+    # Purely numeric IDs
+    if re.match(r"^\d+$", value):
+        return True
+
+    # Other common ID patterns (long alphanumeric with underscores/dots)
+    if re.match(r"^[A-Z0-9]+[._][A-Z0-9._]+$", value) and len(value) > 10:
+        return True
+
+    return False
+
+
+def _validate_gene_symbols_column(
+    adata: anndata.AnnData, gene_symbols_col: str
+) -> None:
+    """Validate that the gene_symbols_col contains gene symbols rather than gene IDs.
+
+    Args:
+        adata: AnnData object
+        gene_symbols_col: Column name in adata.var that should contain gene symbols
+
+    Raises:
+        ValueError: If the column appears to contain gene IDs instead of gene symbols
+    """
+    gene_values = adata.var[gene_symbols_col].dropna().astype(str)
+
+    if len(gene_values) == 0:
+        logger.warning(
+            f"Column '{gene_symbols_col}' is empty or contains only NaN values."
+        )
+        return
+
+    # Sample a subset for efficiency (check up to 1000 non-null values)
+    sample_size = min(1000, len(gene_values))
+    sample_values = gene_values.sample(n=sample_size)
+
+    # Count how many look like gene IDs vs gene symbols
+    id_like_count = sum(1 for value in sample_values if _is_gene_id_like(value))
+    id_like_percentage = (id_like_count / len(sample_values)) * 100
+
+    if id_like_percentage > 50:
+        example_ids = [
+            value for value in sample_values.iloc[:5] if _is_gene_id_like(value)
+        ]
+        logger.warning(
+            f"Column '{gene_symbols_col}' appears to contain gene IDs rather than gene symbols. "
+            f"{id_like_percentage:.1f}% of values look like gene IDs (e.g., {example_ids[:3]}). "
+            f"The annotation might not be accurate. Consider using a column that contains "
+            f"human-readable gene symbols (e.g., 'TSPAN6', 'DPM1', 'SCYL3') instead of database identifiers."
+        )
+    elif id_like_percentage > 20:
+        logger.warning(
+            f"Column '{gene_symbols_col}' contains {id_like_percentage:.1f}% values that look like gene IDs. "
+            f"Please verify this column contains gene symbols rather than gene identifiers."
+        )
 
 
 def _validate_adata(
@@ -32,6 +117,8 @@ def _validate_adata(
         )
     if hasattr(adata.var, gene_symbols_col) is False:
         raise KeyError(f"Column '{gene_symbols_col}' not found in `adata.var`.")
+    _validate_gene_symbols_column(adata, gene_symbols_col)
+
     if adata.uns[rank_genes_key]["params"]["groupby"] != cell_group_key:
         raise ValueError(
             f"`rank_genes_groups` run with groupby='{adata.uns[rank_genes_key]['params']['groupby']}', expected '{cell_group_key}'."
@@ -84,7 +171,6 @@ def _validate_adata(
             f"Available keys: {available_keys}. "
             f"Visualization will be disabled."
         )
-        return None
 
     return found_coordinates_key
 
@@ -226,6 +312,8 @@ def _get_markers(
 
     gene_ids_to_name = adata.var[gene_symbols_col].to_dict()
     markers = {}
+    any_genes_found = False
+
     for group_name in mdf.columns.tolist():
         cluster_id = ct_map.get(str(group_name), "")
         if not cluster_id:
@@ -235,9 +323,22 @@ def _get_markers(
                 f"Ensure rank_genes_groups was run on the same cell grouping."
             )
         top_genes = mdf[group_name].values[: min(n_top_genes, len(mdf))]
+        if len(top_genes) == 0:
+            logger.warning(
+                f"No top genes found for group '{group_name}' (cluster '{cluster_id}')"
+            )
+        else:
+            any_genes_found = True
+
         markers[cluster_id] = [
             gene_ids_to_name[gene] for gene in top_genes if gene in gene_ids_to_name
         ]
+
+    if not any_genes_found:
+        raise ValueError(
+            "No marker genes found for any group. This could indicate issues with the "
+            "rank_genes_groups analysis or that all groups have insufficient marker genes."
+        )
 
     return markers
 
