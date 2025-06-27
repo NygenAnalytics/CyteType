@@ -89,6 +89,89 @@ def _validate_adata(
     return found_coordinates_key
 
 
+def _extract_sampled_coordinates(
+    adata: anndata.AnnData,
+    coordinates_key: str | None,
+    group_key: str,
+    cluster_map: dict[str, str],
+    max_cells_per_group: int = 1000,
+    random_state: int = 42,
+) -> tuple[list[list[float]] | None, list[str]]:
+    """Extract coordinates with sampling to limit the number of points per group.
+
+    Args:
+        adata: AnnData object containing single-cell data
+        coordinates_key: Key in adata.obsm containing coordinates
+        group_key: Column name in adata.obs to group cells by
+        cluster_map: Dictionary mapping original cluster labels to new cluster IDs
+        max_cells_per_group: Maximum number of cells to sample per group (default: 1000)
+        random_state: Random seed for reproducible sampling (default: 42)
+
+    Returns:
+        tuple: (sampled_coordinates, sampled_cluster_labels)
+            - sampled_coordinates: List of [x, y] coordinate pairs, or None if no coordinates
+            - sampled_cluster_labels: List of cluster labels corresponding to sampled coordinates
+    """
+    if coordinates_key is None:
+        logger.warning("No coordinates key provided, returning None coordinates.")
+        return None, []
+
+    coordinates = adata.obsm[coordinates_key]
+
+    # Take only the first 2 dimensions for visualization
+    if coordinates.shape[1] > 2:
+        coordinates = coordinates[:, :2]
+        logger.info(
+            f"Using first 2 dimensions of '{coordinates_key}' for visualization."
+        )
+
+    # Create DataFrame with coordinates and group labels
+    coord_df = pd.DataFrame(
+        {
+            "x": coordinates[:, 0],
+            "y": coordinates[:, 1],
+            "group": adata.obs[group_key].values,
+        }
+    )
+
+    # Sample cells from each group using pandas
+    sampled_coords = []
+    for group_label in coord_df["group"].unique():
+        group_mask = coord_df["group"] == group_label
+        group_size = group_mask.sum()
+        sample_size = min(max_cells_per_group, group_size)
+
+        sampled_group = coord_df[group_mask].sample(
+            n=sample_size, random_state=random_state
+        )
+        sampled_coords.append(sampled_group)
+
+        if group_size > max_cells_per_group:
+            logger.info(
+                f"Sampled {sample_size} cells from group '{group_label}' "
+                f"(originally {group_size} cells)"
+            )
+
+    # Concatenate all sampled groups
+    sampled_coord_df: pd.DataFrame = pd.concat(sampled_coords, ignore_index=True)
+
+    # Extract coordinates and labels
+    sampled_coordinates = sampled_coord_df[["x", "y"]].values.tolist()
+
+    # Map original cluster labels to new cluster IDs
+    sampled_cluster_labels = [
+        cluster_map.get(str(label), str(label))
+        for label in sampled_coord_df["group"].values
+    ]
+
+    logger.info(
+        f"Extracted {len(sampled_coordinates)} coordinate points "
+        f"(sampled from {len(coordinates)} total cells)"
+    )
+
+    return sampled_coordinates, sampled_cluster_labels
+
+
 def _calculate_pcent(
     adata: anndata.AnnData, clusters: list[str], batch_size: int, gene_names: list[str]
 ) -> dict[str, dict[str, float]]:
