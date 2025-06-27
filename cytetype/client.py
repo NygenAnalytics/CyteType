@@ -176,7 +176,13 @@ def poll_for_results(
         The result data from the API when the job completes
     """
 
-    time.sleep(10)  # Initial delay before first poll
+    logger.info(f"Waiting for results for job ID: {job_id}")
+
+    time.sleep(20)
+
+    logger.info(
+        f"View the automatically updating visualization report at: {api_url}/report/{job_id}"
+    )
 
     logs_url = f"{api_url}/logs/{job_id}"
     logger.debug(f"Polling for results for job {job_id}")
