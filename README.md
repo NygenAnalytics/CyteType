@@ -18,11 +18,11 @@
 
 > **⚠️ Important Notice - URL Update**: The CyteType API URL has been updated. The new API URL is: `https://nygen-labs-prod--cytetype-api.modal.run/report/<jobid>`. Your existing reports can be accessed through this URL.
 
-**CyteType** is a Python package for deep chracterization of cell clusters from single-cell RNA-seq data. This package interfaces with Anndata objects to call CyteType API.
+**CyteType** is a Python package for deep characterization of cell clusters from single-cell RNA-seq data. This package interfaces with Anndata objects to call CyteType API.
 
 ## Example Report
 
-View a sample annotation report: [CyteType Report](https://cytetype.nygen.io/report/6263d2ba-0865-4edb-bec1-06b35be4e80b?v=260625)
+View a sample annotation report: [CyteType Report](https://cytetype.nygen.io/report/bcb84fdb-9d50-49e1-9015-f62099a523f3?v=250703)
 
 ## Quick Start
 
@@ -149,7 +149,7 @@ The `run` method accepts several configuration parameters to control the annotat
 
 The CyteType API provides access to some chosen LLM providers by default.
 Users can choose to provide their own LLM models and model providers.
-Many models can be provided simultaneously and then they will be used iteratively for each of the clusters.
+Many models can be provided simultaneously, and then they will be used iteratively for each of the clusters.
 
 ```python
 adata = annotator.run(
@@ -169,7 +169,7 @@ adata = annotator.run(
 
 #### Rate Limits
 
-If you do not provide your own model providers then the CyteType API implements rate limiting for fair usage:
+If you do not provide your own model providers, then the CyteType API implements rate limiting for fair usage:
 
 - Annotation submissions: 5 requests per hour per IP
 - Result retrieval: 20 requests per minute per IP
