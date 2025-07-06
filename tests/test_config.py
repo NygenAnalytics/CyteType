@@ -22,7 +22,7 @@ def test_default_constants() -> None:
 
     assert isinstance(DEFAULT_TIMEOUT, int)
     assert DEFAULT_TIMEOUT > 0
-    assert DEFAULT_TIMEOUT == 3600  # 1 hour
+    assert DEFAULT_TIMEOUT == 7200
 
 
 def test_logger_configuration() -> None:

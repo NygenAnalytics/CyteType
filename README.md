@@ -8,6 +8,9 @@
   <a href="https://github.com/NygenAnalytics/cytetype/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg" alt="License: CC BY-NC-SA 4.0">
   </a>
+  <a href="https://pypi.org/project/cytetype/">
+    <img src="https://img.shields.io/pypi/v/cytetype.svg" alt="PyPI version">
+  </a>
   <img src="https://img.shields.io/badge/python-≥3.11-blue.svg" alt="Python Version">
   <a href="https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsqRsh2N7?usp=sharing">
     <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab">
@@ -16,7 +19,7 @@
 
 ---
 
-> **⚠️ Important Notice - URL Update**: The CyteType API URL has been updated. The new API URL is: `https://nygen-labs-prod--cytetype-api.modal.run/report/<jobid>`. Your existing reports can be accessed through this URL.
+> ⚠️ CyteType is under active development and breaking changes may be introduced. Please work with the latest version to ensure compatibility and access to new features.
 
 **CyteType** is a Python package for deep characterization of cell clusters from single-cell RNA-seq data. This package interfaces with Anndata objects to call CyteType API.
 
@@ -138,6 +141,8 @@ annotator = CyteType(
     aggregate_metadata=True,               # Aggregate metadata (default)
     min_percentage=10,                     # Min percentage for cluster context
     pcent_batch_size=2000,                 # Batch size for calculations
+    coordinates_key='X_umap',              # Coordinates key for visualization (default)
+    max_cells_per_group=1000,              # Max cells per group for visualization (default)
 )
 ```
 
@@ -201,13 +206,14 @@ adata = annotator.run(
     },
     
     # API polling and timeout settings
-    poll_interval_seconds=10,           # How often to check for results
-    timeout_seconds=1200,               # Max wait time (20 minutes)
+    poll_interval_seconds=30,           # How often to check for results (default)
+    timeout_seconds=7200,               # Max wait time (default: 2 hours)
     
     # API configuration
     api_url="https://custom-api.com",   # Custom API endpoint
     auth_token="your-auth-token",       # Authentication token
-    save_query=True                     # Save query to query.json
+    save_query=True,                    # Save query to query.json
+    query_filename="query.json",        # Filename for the query
 )
 ```
 
@@ -215,15 +221,6 @@ adata = annotator.run(
 
 - **`concurrentClusters`** (int, default=5, range=2-30): Maximum number of clusters to process simultaneously. Higher values may speed up processing but can cause rate limit errors from LLM API providers.
 - **`maxAnnotationRevisions`** (int, default=2, range=1-5): Maximum number of refinement iterations based on reviewer feedback. More revisions may improve annotation quality but increase processing time.
-
-#### Additional Run Parameters
-
-- **`metadata`** (dict, optional): Custom metadata to send with the API request for tracking purposes. Can include experiment names, run labels, researcher information, or any other user-defined data. This metadata is sent to the API but not stored locally with results.
-- **`poll_interval_seconds`** (int, default=30): How frequently to check the API for job completion.
-- **`timeout_seconds`** (int, default=3600): Maximum time to wait for results before timing out.
-- **`api_url`** (str): Custom API endpoint URL for self-hosted deployments.
-- **`auth_token`** (str, optional): Bearer token for API authentication.
-- **`save_query`** (bool, default=True): Whether to save the API query to `query.json` for debugging.
 
 ## Annotation Process
 
@@ -234,11 +231,41 @@ CyteType performs comprehensive cell type annotation through an automated pipeli
 - **Automated Annotation**: Identifies likely cell types for each cluster based on marker genes
 - **Ontology Mapping**: Maps identified cell types to Cell Ontology terms (e.g., `CL_0000127`)  
 - **Review & Justification**: Analyzes supporting/conflicting markers and assesses confidence
-- **Alternative Suggestions**: Provides potential alternative annotations when applicable
+- **Literature Search**: Searches for relevant literature to support the annotation
+
+### Advanced Context Generation
+
+CyteType generates detailed contextual information to inform annotations:
+
+**Dataset-Level Context**: Comprehensive analysis of experimental metadata:
+```
+"This dataset originates from multiple human tissues including adrenal gland, 
+brain, liver, lung, lymph node, and pleural effusion, with samples derived 
+from both healthy individuals and patients diagnosed with lung adenocarcinoma 
+or small cell lung carcinoma. Experimental data was generated via 10X Genomics 
+Chromium 3' single-cell sequencing, which may introduce platform-specific 
+technical artifacts."
+```
+
+**Cluster-Specific Context**: Detailed metadata analysis for each cluster:
+```
+"Cluster 1 comprises 99% lung-derived cells, with 65% originating from lung 
+adenocarcinoma samples and 33% from normal tissue. The cells are distributed 
+across two primary donors with demographic characteristics including 67% 
+female donors and 97% self-reported European ethnicity. Treatment conditions 
+include Platinum Doublet (55%) and Naive (44%)."
+```
+
+This contextual information enables more accurate annotations by considering:
+- **Tissue Origins**: Multi-tissue datasets with precise anatomical mapping
+- **Disease States**: Healthy vs. pathological conditions with treatment history
+- **Technical Factors**: Sequencing platforms, batch effects, and processing methods
+- **Demographics**: Age, sex, and ethnicity distributions
+- **Treatment Context**: Therapeutic interventions and their potential cellular effects
 
 ### Result Format
 
-Results include detailed annotations for each cluster:
+Results include comprehensive annotations for each cluster with expert-level analysis:
 
 ```python
 # Access results after annotation using the helper method
@@ -256,17 +283,101 @@ for annotation in results['annotations']:
     print(f"Cell State: {annotation['cellState']}")
     print(f"Confidence: {annotation['confidence']}")
     print(f"Ontology Term: {annotation['ontologyTerm']}")
-    print(f"Is Approved: {annotation['is_approved']}")
     print(f"Is Heterogeneous: {annotation['isHeterogeneous']}")
+    
+    # Supporting evidence and conflicts
     print(f"Supporting Markers: {annotation['supportingMarkers']}")
     print(f"Conflicting Markers: {annotation['conflictingMarkers']}")
     print(f"Missing Expression: {annotation['missingExpression']}")
     print(f"Unexpected Expression: {annotation['unexpectedExpression']}")
-    print(f"Alternative Annotations: {annotation['alternativeAnnotations']}")
+    
+    # Expert review and justification
     print(f"Justification: {annotation['justification']}")
     print(f"Review Comments: {annotation['reviewComments']}")
     print(f"Feedback: {annotation['feedback']}")
-    print(f"Similarity: {annotation['similarity']}")
+    
+    # Similarity and literature support
+    print(f"Similar Clusters: {annotation['similarity']}")
+    print(f"Corroborating Papers: {len(annotation['corroboratingPapers']['papers'])} papers")
+    
+    # Model usage and performance metrics
+    print(f"Models Used: {annotation['llmModels']}")
+    print(f"Total Processing Time: {annotation['usageInfo']['total_runtime_seconds']:.1f}s")
+    print(f"Total Tokens: {annotation['usageInfo']['total_tokens']}")
+```
+
+#### Advanced Result Components
+
+**Expert Review System**: Each annotation undergoes multi-stage review with detailed feedback:
+- **Review Comments**: Expert-level biological interpretation and mechanistic insights
+- **Confidence Assessment**: Moderate/High confidence based on marker evidence
+- **Feedback Loop**: Iterative refinement based on biological plausibility
+- **Mechanistic Analysis**: Discussion of signaling pathways, developmental biology, and disease pathogenesis
+
+**Literature Integration**: Automatic literature search provides supporting evidence:
+- **Corroborating Papers**: Relevant publications with PMIDs and summaries
+- **Biological Context**: Integration of current research to validate annotations
+
+Example corroborating papers:
+```python
+papers = annotation['corroboratingPapers']['papers']
+for paper in papers:
+    print(f"Title: {paper['title']}")
+    print(f"PMID: {paper['pmid']}")
+    print(f"Journal: {paper['journal']} ({paper['year']})")
+    print(f"Summary: {paper['summary']}")
+```
+
+Sample output:
+```
+Title: YAP regulates alveolar epithelial cell differentiation and AGER via NFIB/KLF5/NKX2-1
+PMID: 34466790
+Journal: iScience (2021)
+Summary: Documents atypical HOPX+AGER+SFTPC+ 'dual-positive' alveolar cells that 
+persist in mature lungs, directly validating the mixed AT1/AT2 phenotype observed 
+in malignant clusters.
+```
+
+**Marker Analysis**: Comprehensive evaluation of gene expression patterns:
+- **Supporting Markers**: Genes that strongly support the annotation
+- **Conflicting Markers**: Genes that challenge the annotation with explanations
+- **Missing/Unexpected Expression**: Detailed analysis of expression anomalies with biological explanations
+
+Example unexpected expression analysis:
+```
+"Expression of AT2 markers (SFTPC, SFTPB) and club cell marker (SCGB1A1) 
+in a cluster with strong AT1 markers" 
+→ Explained by: "dedifferentiation process in cancer where transformed 
+epithelial cells exhibit aberrant co-expression of markers from multiple 
+lineages due to pathological plasticity"
+```
+
+**Performance Metrics**: Detailed usage statistics for transparency:
+- **Model Information**: Which LLM models were used for each analysis step
+- **Runtime Statistics**: Processing time and token usage per cluster
+- **Annotation Attempts**: Number of refinement iterations
+
+#### Example Annotations
+
+CyteType provides sophisticated, multi-layered annotations:
+
+**Basic Cell Type**: `"B-cell"`, `"Lung Adenocarcinoma Cell"`
+
+**Granular Annotations**: Detailed phenotypic descriptions:
+- `"AGER-positive, HOPX-positive, KRT19-positive lung adenocarcinoma cell with mixed AT1/AT2 phenotype"`
+- `"EMT-transitioned, pleural metastasis-competent adenocarcinoma cell with platinum-induced stress phenotype"`
+- `"CD74-high activated tumor-infiltrating B-cell in lung adenocarcinoma microenvironment"`
+
+**Cell States**: Functional and pathological states:
+- `"Transformed"`, `"Malignant"`, `"Activated"`, `"EMT-transitioned and stressed"`
+
+**Expert Review Comments**: Detailed mechanistic insights:
+```
+"The mixed AT1/AT2 phenotype observed in this malignant cluster exemplifies 
+the pathological dedifferentiation characteristic of lung adenocarcinoma, 
+but the degree of lineage promiscuity suggests exceptional cellular plasticity 
+beyond typical adenocarcinoma patterns. This may indicate activation of 
+primitive developmental pathways like Wnt/β-catenin signaling..."
 ```
 
 ## Development
@@ -279,6 +390,15 @@ cd cytetype
 uv sync --all-extras
 uv run pip install -e .
 ```
+
+### Exception Handling
+
+The package defines several custom exceptions for different error scenarios:
+
+- **`CyteTypeError`**: Base exception class for all CyteType-related errors
+- **`CyteTypeAPIError`**: Raised for errors during API communication (network issues, invalid responses)
+- **`CyteTypeTimeoutError`**: Raised when API requests timeout
+- **`CyteTypeJobError`**: Raised when the API reports an error for a specific job
 
 ### Testing
 
