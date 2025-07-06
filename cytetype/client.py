@@ -176,12 +176,16 @@ def poll_for_results(
         The result data from the API when the job completes
     """
 
-    logger.info(f"Waiting for results for job ID: {job_id}")
+    logger.info(f"CyteType job (id: {job_id}) submitted. Polling for results...")
 
-    time.sleep(20)
+    time.sleep(15)
 
     logger.info(
-        f"View the automatically updating visualization report at: {api_url}/report/{job_id}"
+        f"Report (updates automatically) available at: {api_url}/report/{job_id}"
+    )
+
+    logger.info(
+        f"If network disconnects, the results can be fetched like this:\n`results = annotator.get_results()`"
     )
 
     logs_url = f"{api_url}/logs/{job_id}"
