@@ -185,7 +185,7 @@ def poll_for_results(
     )
 
     logger.info(
-        f"If network disconnects, the results can be fetched like this:\n`results = annotator.get_results()`"
+        "If network disconnects, the results can be fetched like this:\n`results = annotator.get_results()`"
     )
 
     logs_url = f"{api_url}/logs/{job_id}"
