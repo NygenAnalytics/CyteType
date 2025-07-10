@@ -25,7 +25,7 @@
 
 ## Example Report
 
-View a sample annotation report: [CyteType Report](https://cytetype.nygen.io/report/757fe976-d35d-45ff-a6ed-f3b9df243093?v=250706)
+View a sample annotation report: [CyteType Report](https://cytetype.nygen.io/report/25086934-ee7b-4e0f-a9ea-1936394074f1?v=250710)
 
 ## Quick Start
 
