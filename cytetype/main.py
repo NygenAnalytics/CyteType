@@ -4,10 +4,11 @@ import json
 import anndata
 import pandas as pd
 from natsort import natsorted
-from pydantic import BaseModel, Field, ConfigDict
+
 
 from .config import logger, DEFAULT_API_URL, DEFAULT_POLL_INTERVAL, DEFAULT_TIMEOUT
 from .client import submit_job, poll_for_results, check_job_status
+from .server_schema import LLMModelConfig
 from .anndata_helpers import (
     _validate_adata,
     _calculate_pcent,
@@ -16,38 +17,7 @@ from .anndata_helpers import (
     _extract_sampled_coordinates,
 )
 
-__all__ = ["CyteType", "BioContext", "ModelConfig", "RunConfig"]
-
-
-class BioContext(BaseModel):
-    """Biological context information for the data."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    studyContext: str = Field(default="")
-    clusterContext: dict[str, dict[str, dict[str, int]]] = Field(default_factory=dict)
-
-
-class ModelConfig(BaseModel):
-    """Configuration for the large language model to be used."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    provider: str
-    name: str | None = None
-    apiKey: str | None = Field(default=None)
-    baseUrl: str | None = Field(default=None)
-    modelSettings: dict[str, Any] | None = Field(default=None)
-
-
-class RunConfig(BaseModel):
-    """Configuration for the annotation run."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    concurrentClusters: int | None = Field(default=None)
-    maxAnnotationRevisions: int | None = Field(default=None)
-    maxLLMRequests: int | None = Field(default=None)
+__all__ = ["CyteType"]
 
 
 class CyteType:
@@ -265,16 +235,15 @@ class CyteType:
 
         # Log success message
         logger.success(
-            f"Annotations successfully added to `adata.obs['{results_prefix}_annotation_{self.group_key}']` "
-            f", ontology term added to `adata.obs['{results_prefix}_cellOntologyTerm_{self.group_key}']` "
-            f"and, full results added to `adata.uns['{results_prefix}_results']`."
+            f"Annotations successfully added to `adata.obs['{results_prefix}_annotation_{self.group_key}']`\n"
+            f"Ontology terms added to `adata.obs['{results_prefix}_cellOntologyTerm_{self.group_key}']`\n"
+            f"Full results added to `adata.uns['{results_prefix}_results']`."
         )
 
     def run(
         self,
         study_context: str,
-        model_config: list[dict[str, Any]] | None = None,
-        run_config: dict[str, Any] | None = None,
+        llm_configs: list[dict[str, Any]] | None = None,
         metadata: dict[str, Any] | None = None,
         results_prefix: str = "cytetype",
         poll_interval_seconds: int = DEFAULT_POLL_INTERVAL,
@@ -283,6 +252,7 @@ class CyteType:
         save_query: bool = True,
         query_filename: str = "query.json",
         auth_token: str | None = None,
+        show_progress: bool = True,
     ) -> anndata.AnnData:
         """Perform cluster characterization using the CyteType API.
 
@@ -290,15 +260,12 @@ class CyteType:
             study_context (str, optional): Biological context for the experimental setup.
                 For example, include information about 'organisms', 'tissues', 'diseases', 'developmental_stages',
                 'single_cell_methods', 'experimental_conditions'. Defaults to None.
-            model_config (list[dict[str, Any]] | None, optional): Configuration for the large language
-                models to be used. Each dict must include 'provider', 'name', 'apiKey', 'baseUrl' (optional), 'modelSettings' (optional).
+            llm_configs (list[dict[str, Any]] | None, optional): Configuration for the large language
+                models to be used. Each dict must match the LLMModelConfig schema with required 'provider' and 'name' fields.
+                Either 'apiKey' or all AWS credentials ('awsAccessKeyId', 'awsSecretAccessKey', 'awsDefaultRegion') must be provided.
                 Defaults to None, using the API's default model.
-            run_config (dict[str, Any] | None, optional): Configuration for the annotation run.
-                Can include 'maxAnnotationRevisions'.
-                Defaults to None, using the API's default settings.
-            metadata (dict[str, Any] | None, optional): Custom metadata to send with the API request.
-                Can include information like run labels, experiment names, or any other user-defined data.
-                This metadata will be sent to the API for tracking purposes but not stored locally.
+            metadata (dict[str, Any] | None, optional): Custom metadata tags to include in the report header.
+                Values that look like URLs will be made clickable in the report.
                 Defaults to None.
             results_prefix (str, optional): Prefix for keys added to `adata.obs` and `adata.uns` to
                 store results. The final annotation column will be
@@ -314,6 +281,8 @@ class CyteType:
                 Defaults to "query.json".
             auth_token (str | None, optional): Bearer token for API authentication. If provided,
                 will be included in the Authorization header as "Bearer {auth_token}". Defaults to None.
+            show_progress (bool, optional): Whether to display progress updates with spinner and
+                cluster status. Set to False to disable all visual progress output. Defaults to True.
 
         Returns:
             anndata.AnnData: The input AnnData object, modified in place with the following additions:
@@ -327,50 +296,30 @@ class CyteType:
         """
         api_url = api_url.rstrip("/")
 
-        bio_context = BioContext(
-            studyContext=study_context, clusterContext=self.group_metadata
-        ).model_dump()
-
-        # Process model config using Pydantic model
-        if model_config is not None:
-            model_config_list = [
-                ModelConfig(**config).model_dump() for config in model_config
-            ]
-        else:
-            model_config_list = []
-
-        # Process run config using Pydantic model
-        if run_config is not None:
-            run_config_dict = RunConfig(**run_config).model_dump()
-            # Remove None values
-            run_config_dict = {
-                k: v for k, v in run_config_dict.items() if v is not None
-            }
-        else:
-            run_config_dict = {}
-
         # Prepare API query
-        query: dict[str, Any] = {
-            "bioContext": bio_context,
-            "markerGenes": self.marker_genes,
-            "expressionData": self.expression_percentages,
-            "modelConfig": model_config_list,
-            "runConfig": run_config_dict,
-            "visualizationData": self.visualization_data,
+        # Transform to match new server API structure
+        input_data = {
+            "studyInfo": study_context,
+            "infoTags": metadata or {},
             "clusterLabels": {v: k for k, v in self.cluster_map.items()},
+            "clusterMetadata": self.group_metadata,
+            "markerGenes": self.marker_genes,
+            "visualizationData": self.visualization_data,
+            "expressionData": self.expression_percentages,
         }
-
-        # Add metadata if provided
-        if metadata is not None:
-            query["metadata"] = metadata
 
         if save_query:
             with open(query_filename, "w") as f:
-                json.dump(query, f)
+                json.dump(input_data, f)
 
         # Submit job and poll for results
         job_id = submit_job(
-            query,
+            {
+                "input_data": input_data,
+                "llm_configs": [LLMModelConfig(**x).model_dump() for x in llm_configs]
+                if llm_configs
+                else None,
+            },
             api_url,
             auth_token=auth_token,
         )
@@ -391,6 +340,7 @@ class CyteType:
             poll_interval_seconds,
             timeout_seconds,
             auth_token=auth_token,
+            show_progress=show_progress,
         )
 
         self._store_results_and_annotations(
@@ -468,9 +418,6 @@ class CyteType:
             status = status_response["status"]
 
             if status == "completed":
-                logger.info(
-                    f"Job {job_id} completed successfully. Storing results locally."
-                )
                 result_data = status_response["result"]
 
                 # Ensure we have a proper dict result instead of Any
@@ -496,7 +443,7 @@ class CyteType:
 
                 return result_data
 
-            elif status == "error":
+            elif status == "failed":
                 logger.error(f"Job {job_id} failed: {status_response['message']}")
                 return None
 
@@ -504,9 +451,22 @@ class CyteType:
                 logger.info(
                     f"Job {job_id} is still {status}. Results not yet available."
                 )
-                logger.info(
-                    f"Check progress at: {job_details.get('report_url', 'N/A')}"
-                )
+
+                # Create report URL with auth token if available
+                stored_auth_token = job_details.get("auth_token")
+                if stored_auth_token:
+                    report_url_with_auth = (
+                        f"{api_url}/report/{job_id}?token={stored_auth_token}"
+                    )
+                    logger.info(f"Check progress at: {report_url_with_auth}")
+                    logger.warning(
+                        "⚠️  Note: The report URL contains your auth token - don't share it publicly!"
+                    )
+                else:
+                    logger.info(
+                        f"Check progress at: {job_details.get('report_url', 'N/A')}"
+                    )
+
                 return None
 
             elif status == "not_found":
