@@ -23,6 +23,31 @@
 
 **CyteType** is a Python package for deep characterization of cell clusters from single-cell RNA-seq data. This package interfaces with Anndata objects to call CyteType API.
 
+## Table of Contents
+
+- [Example Report](#example-report)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Required Preprocessing](#required-preprocessing)
+  - [Annotation](#annotation)
+- [Configuration Options](#configuration-options)
+  - [Initialization Parameters](#initialization-parameters)
+  - [Submitting Annotation job](#submitting-annotation-job)
+  - [Custom LLM Configuration](#custom-llm-configuration)
+  - [Custom LLM Configuration (Ollama)](#custom-llm-configuration-ollama)
+  - [Advanced parameters](#advanced-parameters)
+- [Annotation Process](#annotation-process)
+  - [Core Functionality](#core-functionality)
+  - [Advanced Context Generation](#advanced-context-generation)
+  - [Result Format](#result-format)
+  - [Advanced Result Components](#advanced-result-components)
+- [Development](#development)
+  - [Setup](#setup)
+  - [Exception Handling](#exception-handling)
+  - [Testing](#testing)
+- [License](#license)
+
 ## Example Report
 
 View a sample annotation report: [CyteType Report](https://cytetype.nygen.io/report/25086934-ee7b-4e0f-a9ea-1936394074f1?v=250710)
@@ -116,17 +141,6 @@ adata = annotator.run(
 # - adata.uns['cytetype_results'] (full API response)
 ```
 
-The `study_context` should include comprehensive biological information about your experimental setup:
-
-- **Organisms**: Species being studied (e.g., "human", "mouse")
-- **Tissues**: Tissue types and anatomical regions
-- **Diseases**: Disease conditions or states
-- **Developmental stages**: Age, developmental timepoints
-- **Single-cell methods**: Sequencing platform (e.g., "10X Genomics", "Smart-seq2")
-- **Experimental conditions**: Treatments, time courses, perturbations
-
-**Example**: `"Adult human brain tissue samples from healthy controls and Alzheimer's disease patients, analyzed using 10X Genomics single-cell RNA-seq. Samples include cortical and hippocampal regions."`
-
 # Configuration Options
 
 ## Initialization Parameters
@@ -135,20 +149,33 @@ The `study_context` should include comprehensive biological information about yo
 annotator = CyteType(
     adata,
     group_key='leiden',                    # Required: cluster column name
-    rank_key='rank_genes_groups',          # DE results key (default)
-    gene_symbols_column='gene_symbols',    # Gene symbols column (default)
+    rank_key='rank_genes_groups',          # DE results key
+    gene_symbols_column='gene_symbols',    # Gene symbols column
     n_top_genes=50,                        # Top marker genes per cluster
-    aggregate_metadata=True,               # Aggregate metadata (default)
+    aggregate_metadata=True,               # Aggregate metadata
     min_percentage=10,                     # Min percentage for cluster context
     pcent_batch_size=2000,                 # Batch size for calculations
-    coordinates_key='X_umap',              # Coordinates key for visualization (default)
-    max_cells_per_group=1000,              # Max cells per group for visualization (default)
+    coordinates_key='X_umap',              # Coordinates key for visualization
+    max_cells_per_group=1000,              # Max cells per group for visualization 
 )
 ```
 
 ## Submitting Annotation job
 
 The `run` method accepts several configuration parameters to control the annotation process:
+
+```python
+annotator.run(
+    study_context="Adult human brain tissue samples from healthy controls and Alzheimer's disease patients, analyzed using 10X Genomics single-cell RNA-seq. Samples include cortical and hippocampal regions.",
+    metadata={
+        'experiment_name': 'Brain_AD_Study',
+        'run_label': 'initial_analysis'
+    },
+    save_query=True,
+    query_filename="query.json",
+    show_progress=True,
+)
+```
 
 ### Custom LLM Configuration
 
@@ -159,7 +186,7 @@ Many models can be provided simultaneously, and then they will be used iterative
 ```python
 adata = annotator.run(
     study_context="Human PBMC from COVID-19 patients",
-    model_config=[{
+    llm_configs=[{
         'provider': 'openai',
         'name': 'gpt-4o-mini',
         'apiKey': 'your-api-key',
@@ -176,12 +203,13 @@ adata = annotator.run(
 
 If you do not provide your own model providers, then the CyteType API implements rate limiting for fair usage:
 
-- Annotation submissions: 5 requests per hour per IP
-- Result retrieval: 20 requests per minute per IP
+- Annotation submissions: 5 RPD
+- Reannotation: 10 RPD
+- Report retrieval: 20 RPM
 
 If you exceed rate limits, the system will return appropriate error messages with retry timing information
 
-Supported providers: `openai`, `anthropic`, `google`, `xai`, `groq`, `mistral`, `openrouter`
+Supported providers: `openai`, `anthropic`, `google`, `xai`, `groq`, `mistral`, `openrouter`, `bedrock`
 
 ### Custom LLM Configuration (Ollama)
 
@@ -192,19 +220,6 @@ The CyteType API supports Ollama models as well. You will need to expose your Ol
 ```python
 adata = annotator.run(
     ...
-    run_config={
-        'concurrentClusters': 3,        # Default: 3, Range: 2-10
-        'maxAnnotationRevisions': 2,    # Default: 2, Range: 1-5
-    },
-    
-    # Custom metadata for tracking
-    metadata={
-        'experiment_name': 'PBMC_COVID_Study',
-        'run_label': 'baseline_analysis',
-        'researcher': 'Dr. Smith',
-        'batch': 'batch_001'
-    },
-    
     # API polling and timeout settings
     poll_interval_seconds=30,           # How often to check for results (default)
     timeout_seconds=7200,               # Max wait time (default: 2 hours)
@@ -212,15 +227,12 @@ adata = annotator.run(
     # API configuration
     api_url="https://custom-api.com",   # Custom API endpoint
     auth_token="your-auth-token",       # Authentication token
-    save_query=True,                    # Save query to query.json
-    query_filename="query.json",        # Filename for the query
 )
 ```
 
-#### Run configuration
+### Authentication and Authorization
 
-- **`concurrentClusters`** (int, default=5, range=2-30): Maximum number of clusters to process simultaneously. Higher values may speed up processing but can cause rate limit errors from LLM API providers.
-- **`maxAnnotationRevisions`** (int, default=2, range=1-5): Maximum number of refinement iterations based on reviewer feedback. More revisions may improve annotation quality but increase processing time.
+You can provide your own token to the `run` method using the `auth_token` parameter. This will be included in the Authorization header as "Bearer {auth_token}". All API requests will be authenticated with this token.
 
 ## Annotation Process
 
