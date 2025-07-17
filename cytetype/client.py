@@ -141,7 +141,7 @@ def poll_for_results(
     )
 
     start_time = time.time()
-    last_cluster_status = {}
+    last_cluster_status: dict[str, str] = {}
     spinner_frame = 0
     consecutive_not_found_count = 0  # Track consecutive 404 responses
 

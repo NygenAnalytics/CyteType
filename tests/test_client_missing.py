@@ -1,6 +1,7 @@
 """Tests for missing functionality in cytetype.client module."""
 
 import pytest
+from typing import Any
 from unittest.mock import patch, MagicMock
 
 from cytetype.client import check_job_status
@@ -39,7 +40,7 @@ def test_check_job_status_completed(mock_make_results: MagicMock) -> None:
 @patch("cytetype.client.make_results_request")
 def test_check_job_status_processing(mock_make_results: MagicMock) -> None:
     """Test check_job_status returns processing job status."""
-    mock_response = {
+    mock_response: dict[str, Any] = {
         "status": "processing",
         "result": None,
         "message": "Job is processing",
@@ -57,7 +58,7 @@ def test_check_job_status_processing(mock_make_results: MagicMock) -> None:
 @patch("cytetype.client.make_results_request")
 def test_check_job_status_pending(mock_make_results: MagicMock) -> None:
     """Test check_job_status returns pending job status."""
-    mock_response = {
+    mock_response: dict[str, Any] = {
         "status": "pending",
         "result": None,
         "message": "Job is pending",
@@ -76,7 +77,7 @@ def test_check_job_status_pending(mock_make_results: MagicMock) -> None:
 def test_check_job_status_error(mock_make_results: MagicMock) -> None:
     """Test check_job_status returns error job status."""
     error_msg = "Internal processing error"
-    mock_response = {
+    mock_response: dict[str, Any] = {
         "status": "failed",
         "result": None,
         "message": error_msg,
@@ -114,7 +115,7 @@ def test_check_job_status_not_found(mock_make_results: MagicMock) -> None:
 def test_check_job_status_with_auth_token(mock_make_results: MagicMock) -> None:
     """Test check_job_status with authentication token."""
     auth_token = "test-token-123"
-    mock_response = {
+    mock_response: dict[str, Any] = {
         "status": "pending",
         "result": None,
         "message": "Job is pending",
@@ -170,7 +171,7 @@ def test_check_job_status_http_error(mock_make_results: MagicMock) -> None:
 @patch("cytetype.client.make_results_request")
 def test_check_job_status_unknown_status(mock_make_results: MagicMock) -> None:
     """Test check_job_status handles unknown status values."""
-    mock_response = {
+    mock_response: dict[str, Any] = {
         "status": "unknown",
         "result": None,
         "message": "Unknown job status: unknown_status",
@@ -190,7 +191,7 @@ def test_check_job_status_invalid_completed_response(
     mock_make_results: MagicMock,
 ) -> None:
     """Test check_job_status handles completed job with invalid result format."""
-    mock_response = {
+    mock_response: dict[str, Any] = {
         "status": "failed",
         "result": None,
         "message": "Invalid response format from API",

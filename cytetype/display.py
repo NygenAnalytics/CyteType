@@ -36,7 +36,7 @@ def display_cluster_status(
         return
 
     # Count statuses
-    status_counts = {}
+    status_counts: dict[str, int] = {}
     for status in cluster_status.values():
         status_counts[status] = status_counts.get(status, 0) + 1
 
