@@ -18,7 +18,7 @@ def test_default_constants() -> None:
 
     assert isinstance(DEFAULT_POLL_INTERVAL, int)
     assert DEFAULT_POLL_INTERVAL > 0
-    assert DEFAULT_POLL_INTERVAL == 30
+    assert DEFAULT_POLL_INTERVAL == 10
 
     assert isinstance(DEFAULT_TIMEOUT, int)
     assert DEFAULT_TIMEOUT > 0

@@ -127,7 +127,7 @@ def test_cytetype_success(
     mock_submit.assert_called_once()
     query_arg, url_arg = mock_submit.call_args[0]
     assert url_arg == DEFAULT_API_URL
-    assert list(query_arg["markerGenes"].keys()) == ["1", "2", "3"]
+    assert list(query_arg["input_data"]["markerGenes"].keys()) == ["1", "2", "3"]
 
     mock_poll.assert_called_once()
     job_id_arg, url_arg, interval_arg, timeout_arg = mock_poll.call_args[0]
@@ -246,9 +246,9 @@ def test_cytetype_custom_rank_key(
     query_arg, _ = mock_submit.call_args[0]
     # The markers should be the same as before because we used the same mock data
     # in adata.uns["custom_rank_genes"]
-    assert "markerGenes" in query_arg
-    assert list(query_arg["markerGenes"].keys()) == ["1", "2", "3"]
-    assert query_arg["markerGenes"]["1"][0] == "gene_0"
+    assert "markerGenes" in query_arg["input_data"]
+    assert list(query_arg["input_data"]["markerGenes"].keys()) == ["1", "2", "3"]
+    assert query_arg["input_data"]["markerGenes"]["1"][0] == "gene_0"
 
 
 @patch("cytetype.main.submit_job")
@@ -380,10 +380,10 @@ def test_cytetype_with_metadata(
     # Check that submit_job was called with metadata in the query
     mock_submit.assert_called_once()
     query_arg, _ = mock_submit.call_args[0]
-    assert "metadata" in query_arg
-    assert query_arg["metadata"] == test_metadata
-    assert query_arg["metadata"]["experiment_name"] == "Test Experiment"
-    assert query_arg["metadata"]["run_label"] == "test_run_001"
+    assert "infoTags" in query_arg["input_data"]
+    assert query_arg["input_data"]["infoTags"] == test_metadata
+    assert query_arg["input_data"]["infoTags"]["experiment_name"] == "Test Experiment"
+    assert query_arg["input_data"]["infoTags"]["run_label"] == "test_run_001"
 
     # Check that metadata is NOT stored in the results
     assert "cytetype_results" in cytetype.adata.uns
