@@ -50,7 +50,7 @@
 
 ## Example Report
 
-View a sample annotation report: <a href="https://nygen-labs-prod--cytetype-api.modal.run/report/0470bedf-f7c8-4168-9c34-fa4eb3ab35d4?v=250710" target="blank">CyteType Report</a>
+View a sample annotation report: <a href="https://nygen-labs-prod--cytetype-api.modal.run/report/77069508-d9f1-4a79-bdab-5870fc3ccdf3?v=250722" target="blank">CyteType Report</a>
 
 
 

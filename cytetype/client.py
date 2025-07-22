@@ -56,31 +56,19 @@ def submit_job(
             # Check for authentication/authorization errors
             if e.response.status_code == 401:
                 logger.error("❌ Authentication failed: Invalid or expired auth token")
-                logger.error("Please check your auth_token and ensure it's valid.")
-                logger.error(
-                    "If you're using a shared server, contact your administrator for a valid token."
-                )
                 raise CyteTypeAPIError(
                     "Authentication failed during job submission"
                 ) from e
             elif e.response.status_code == 403:
                 logger.error("❌ Authorization failed: Access denied")
                 logger.error("Your auth token doesn't have permission to submit jobs.")
-                logger.error(
-                    "If you're using a shared server, contact your administrator for proper permissions."
-                )
                 raise CyteTypeAPIError(
                     "Authorization failed during job submission"
                 ) from e
             elif e.response.status_code == 422:
-                # 422 might indicate auth issues if server is configured to check auth
                 if auth_token and "auth" in str(error_details).lower():
                     logger.error(
                         "❌ Authentication may have failed (server returned validation error)"
-                    )
-                    logger.error("Please check your auth_token and ensure it's valid.")
-                    logger.error(
-                        "If you're using a shared server, contact your administrator for a valid token."
                     )
                     raise CyteTypeAPIError(
                         "Possible authentication failure during job submission"
@@ -90,6 +78,9 @@ def submit_job(
                     raise CyteTypeAPIError(
                         f"Validation error during job submission: {error_details}"
                     ) from e
+            elif e.response.status_code == 429:
+                logger.error("❌ Rate limit exceeded")
+                raise CyteTypeAPIError("Rate limit exceeded. Rate limit is 5 annotation jobs every 24hrs.") from e
 
         logger.debug(
             f"Network or HTTP error during job submission: {e}. Details: {error_details}"
