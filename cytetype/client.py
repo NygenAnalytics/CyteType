@@ -80,7 +80,9 @@ def submit_job(
                     ) from e
             elif e.response.status_code == 429:
                 logger.error("❌ Rate limit exceeded")
-                raise CyteTypeAPIError("Rate limit exceeded. Rate limit is 5 annotation jobs every 24hrs.") from e
+                raise CyteTypeAPIError(
+                    "Rate limit exceeded. Rate limit is 5 annotation jobs every 24hrs."
+                ) from e
 
         logger.debug(
             f"Network or HTTP error during job submission: {e}. Details: {error_details}"
