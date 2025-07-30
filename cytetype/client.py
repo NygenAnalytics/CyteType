@@ -120,14 +120,13 @@ def poll_for_results(
     time.sleep(5)
 
     # Create report URL with auth token if available
+    report_url = f"{api_url}/report/{job_id}"
     if auth_token:
-        report_url = f"{api_url}/report/{job_id}?token={auth_token}"
-        logger.info(f"Report (updates automatically) available at: {report_url}")
-        logger.warning("⚠️  Note: The report URL contains your auth token")
-    else:
         logger.info(
-            f"Report (updates automatically) available at: {api_url}/report/{job_id}"
+            f"Token secured report (updates automatically) available at: {report_url}"
         )
+    else:
+        logger.info(f"Report (updates automatically) available at: {report_url}")
 
     logger.info(
         "If network disconnects, the results can still be fetched:\n`results = annotator.get_results()`"
