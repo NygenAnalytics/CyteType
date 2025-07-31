@@ -56,8 +56,8 @@ View a sample annotation report: <a href="https://nygen-labs-prod--cytetype-api.
 
 The following are notebooks used to run CyteType on all the single-cell datasets used for the label projection challenge in [Open Problems in Single-Cell Analysis](https://openproblems.bio/benchmarks/label_projection/). 
 
-| Dataset | Links | # Clusters (Post filtering) | # Cells (downsampled) |
-| --- | --- | --- | --- |
+| Dataset | Links | # Clusters (Filtered) | # Cells (downsampled) |
+| --- | --- | -- | --- |
 | **Tabula Sapiens** | [Colab](https://colab.research.google.com/drive/1EyQXaruDJBPICUvlUY1E19zxOm_L4_VU?usp=sharing) - [CyteType Report](https://nygen-labs-prod--cytetype-api.modal.run/report/f558f5d2-262a-4387-ba38-b3660bd5cd4d) - [H5ad](https://drive.google.com/file/d/1URo7niPqAo-9HGVH8f3QJfqll9lc8JN_/view?usp=drive_link) | 284 (199) | 1,136,218 (88,111) |
 | **GTEX v9** | [Colab](https://colab.research.google.com/drive/1uvqG2eVaUuNe66e0_7bp682uCdKx6-KL?usp=sharing) - [CyteType Report](https://nygen-labs-prod--cytetype-api.modal.run/report/1be7eeb3-19c7-48bf-bfd7-8aec0ff9da38) - [H5ad](https://drive.google.com/file/d/1EIpudRyasLUHR6J2v8fdpmBTbCE2__UF/view?usp=drive_link) | 74 (74) | 209,126 (47,341) | 
 | **Hypomap** | [Colab](https://colab.research.google.com/drive/1OuTnh8xHoXaINCGcgu_1q-jANwXL8ggF?usp=sharing) - [CyteType Report](https://nygen-labs-prod--cytetype-api.modal.run/report/e61a02f3-bf47-49da-b974-eceb0c692c79) - [H5ad](https://drive.google.com/file/d/1QMvZNdoDlKpOmyguAXSk45-YVz97v4tM/view?usp=drive_link) | 66 (66) | 384,925 (30,754) |
