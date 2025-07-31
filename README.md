@@ -23,6 +23,8 @@
 
 **CyteType** is a Python package for deep characterization of cell clusters from single-cell RNA-seq data. This package interfaces with Anndata objects to call CyteType API.
 
+<img width="2063" height="1857" alt="CyteType architecture" src="https://github.com/user-attachments/assets/c55f00a2-c4d1-420a-88c2-cdb507898383" />
+
 ## Table of Contents
 
 - [Example Report](#example-report)
