@@ -5,6 +5,9 @@ from pydantic import BaseModel, Field, model_validator
 LLMProvider: TypeAlias = Literal[
     "google", "openai", "anthropic", "groq", "mistral", "openrouter", "bedrock"
 ]
+AgentType: TypeAlias = Literal[
+    "contextualizer", "annotator", "reviewer", "summarizer", "clinician", "chat"
+]
 
 
 class LLMModelConfig(BaseModel):
@@ -23,6 +26,17 @@ class LLMModelConfig(BaseModel):
     )
     modelSettings: dict[str, Any] | None = Field(
         default=None, description="Extra body for the model"
+    )
+    targetAgents: list[AgentType] | None = Field(
+        default_factory=list, description="List of agents that can use this model"
+    )
+    skipValidation: bool = Field(
+        default=False,
+        description="Whether to skip validation for the model. Only turn this off if you are sure that the model has worked before.",
+    )
+    allowFallback: bool = Field(
+        default=False,
+        description="Whether to allow the model to fallback to a default model",
     )
 
     # add a model validator to check that all the aws credentials are provided if any of them are provided. also check that either all aws credentials are provided or none of them are provided. or apikey is provided.
