@@ -52,7 +52,7 @@
 
 ## Example Report
 
-View a sample annotation report: <a href="https://nygen-labs-prod--cytetype-api.modal.run/report/77069508-d9f1-4a79-bdab-5870fc3ccdf3?v=250722" target="blank">CyteType Report</a>
+View a sample annotation report: <a href="https://nygen-labs-prod--cytetype-api.modal.run/report/5b4eb3e1-fde7-4609-8be0-2bea015c241d?v=250722" target="blank">CyteType Report</a>
 
 
 ### Open Problems Datasets
