@@ -4,13 +4,19 @@
   <a href="https://github.com/NygenAnalytics/cytetype/actions/workflows/publish.yml">
     <img src="https://github.com/NygenAnalytics/cytetype/actions/workflows/publish.yml/badge.svg" alt="CI Status">
   </a>
+  <img src="https://img.shields.io/badge/python-≥3.11-blue.svg" alt="Python Version">
+  <a href="https://pypi.org/project/cytetype/">
+    <img src="https://img.shields.io/pypi/v/cytetype.svg" alt="PyPI version">
+  </a>
   <a href="https://github.com/NygenAnalytics/cytetype/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg" alt="License: CC BY-NC-SA 4.0">
   </a>
   <a href="https://pypi.org/project/cytetype/">
-    <img src="https://img.shields.io/pypi/v/cytetype.svg" alt="PyPI version">
+    <img src="https://img.shields.io/pypi/dm/cytetype" alt="PyPI downloads">
   </a>
-  <img src="https://img.shields.io/badge/python-≥3.11-blue.svg" alt="Python Version">
+  <a href="https://discord.com/channels/1339594966300622908/1398003605545422998">
+    <img src="https://img.shields.io/discord/1339594966300622908" alt="PyPI version">
+  </a>
 </p>
 
 ---
