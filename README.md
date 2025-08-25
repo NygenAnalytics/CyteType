@@ -21,14 +21,14 @@
 
 ---
 
-CyteType is a Python client for deep characterization of cell clusters from single‑cell RNA‑seq. It prepares your `AnnData` and calls an upstream hosted service to generate rich annotations, ontology terms, and an HTML report.
+CyteType is a Python client for single‑cell RNA‑seq cluster annnotation using multi-agent workflow.
+
+Try <a href="https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsqRsh2N7?usp=sharing" target="_blank">Colab Notebook</a> or browse this <a href="https://nygen-labs-prod--cytetype-api.modal.run/report/5b4eb3e1-fde7-4609-8be0-2bea015c241d?v=250722" target="_blank">example HTML report</a>
 
 <img width="2063" height="1857" alt="CyteType architecture" src="https://github.com/user-attachments/assets/c55f00a2-c4d1-420a-88c2-cdb507898383" />
 
-- Installation: `pip install cytetype`
-
-## Example Report
-- Live sample: <a href="https://nygen-labs-prod--cytetype-api.modal.run/report/5b4eb3e1-fde7-4609-8be0-2bea015c241d?v=250722" target="_blank">CyteType Report</a>
+## Installation
+`pip install cytetype`
 
 ## Quick Start
 
