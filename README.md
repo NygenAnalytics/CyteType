@@ -17,7 +17,12 @@
 
 CyteType is a Python client for deep characterization of cell clusters from single‑cell RNA‑seq. It prepares your `AnnData` and calls an upstream hosted service to generate rich annotations, ontology terms, and an HTML report.
 
-- Minimal install: `pip install cytetype`
+<img width="2063" height="1857" alt="CyteType architecture" src="https://github.com/user-attachments/assets/c55f00a2-c4d1-420a-88c2-cdb507898383" />
+
+- Installation: `pip install cytetype`
+
+## Example Report
+- Live sample: <a href="https://nygen-labs-prod--cytetype-api.modal.run/report/5b4eb3e1-fde7-4609-8be0-2bea015c241d?v=250722" target="_blank">CyteType Report</a>
 
 ## Quick Start
 
@@ -57,9 +62,6 @@ print(adata.obs.cytetype_cellOntologyTerm_clusters)
 - Development: <a href="docs/development.md">docs/development.md</a>
 - Server Overview (high‑level): <a href="docs/server-overview.md">docs/server-overview.md</a>
 - Ollama Integration: <a href="docs/ollama.md">docs/ollama.md</a>
-
-## Example Report
-- Live sample: <a href="https://nygen-labs-prod--cytetype-api.modal.run/report/5b4eb3e1-fde7-4609-8be0-2bea015c241d?v=250722" target="_blank">CyteType Report</a>
 
 ## License
 Licensed under CC BY‑NC‑SA 4.0 — see <a href="LICENSE.md">LICENSE.md</a>.
