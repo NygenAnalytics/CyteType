@@ -150,7 +150,7 @@ Now you can use the following base url in your CyteType notebook as follows:
 # Run annotation
 adata = annotator.run(
     study_context="...",
-    model_config=[
+    llm_configs=[
         {
             "provider": "openai",
             "name": "qwen3:32b",
@@ -159,4 +159,4 @@ adata = annotator.run(
         }
     ]
 )
-```
+``` 
