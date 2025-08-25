@@ -28,7 +28,8 @@ class LLMModelConfig(BaseModel):
         default=None, description="Extra body for the model"
     )
     targetAgents: list[AgentType] | None = Field(
-        default_factory=list, description="List of agents that can use this model"
+        default_factory=list[AgentType],
+        description="List of agents that can use this model",
     )
     skipValidation: bool = Field(
         default=False,
