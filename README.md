@@ -25,7 +25,13 @@ CyteType is a Python client for single‑cell RNA‑seq cluster annnotation usin
 
 Try <a href="https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsqRsh2N7?usp=sharing" target="_blank">Colab Notebook</a> or browse this <a href="https://nygen-labs-prod--cytetype-api.modal.run/report/5b4eb3e1-fde7-4609-8be0-2bea015c241d?v=250722" target="_blank">example HTML report</a>
 
+**Atlas scale examples**: <a href="docs/examples.md">docs/examples.md</a>
+
+---
 <img width="2063" height="1857" alt="CyteType architecture" src="https://github.com/user-attachments/assets/c55f00a2-c4d1-420a-88c2-cdb507898383" />
+
+---
+
 
 ## Installation
 `pip install cytetype`
@@ -63,7 +69,6 @@ print(adata.obs.cytetype_cellOntologyTerm_clusters)
 ## Documentation
 - Configuration (LLMs, auth, advanced): <a href="docs/configuration.md">docs/configuration.md</a>
 - Results: <a href="docs/results.md">docs/results.md</a>
-- Examples & Colab Notebooks: <a href="docs/examples.md">docs/examples.md</a>
 - Troubleshooting: <a href="docs/troubleshooting.md">docs/troubleshooting.md</a>
 - Development: <a href="docs/development.md">docs/development.md</a>
 - Server Overview (high‑level): <a href="docs/server-overview.md">docs/server-overview.md</a>
