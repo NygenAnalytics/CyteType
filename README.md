@@ -14,6 +14,9 @@
   <a href="https://pypi.org/project/cytetype/">
     <img src="https://img.shields.io/pypi/dm/cytetype" alt="PyPI downloads">
   </a>
+  <a href="https://doi.org/10.5281/zenodo.16983093">
+    <img src="https://zenodo.org/badge/973866474.svg" alt="DOI">
+  </a>
   <a href="https://discord.com/channels/1339594966300622908/1398003605545422998">
     <img src="https://img.shields.io/discord/1339594966300622908" alt="PyPI version">
   </a>
