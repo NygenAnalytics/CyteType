@@ -154,6 +154,8 @@ def poll_for_results(
 
             # Extract cluster status for all cases
             raw_response = status_response.get("raw_response", {})
+            if not raw_response:
+                raise CyteTypeAPIError("No response from API")
             current_cluster_status = raw_response.get("clusterStatus", {})
 
             if status == "completed":
