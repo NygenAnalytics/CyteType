@@ -1,9 +1,10 @@
-from typing import Any
+from typing import Any, cast
 import json
 
 import anndata
 import pandas as pd
 from natsort import natsorted
+from pydantic import ValidationError
 
 
 from .config import logger, DEFAULT_API_URL, DEFAULT_POLL_INTERVAL, DEFAULT_TIMEOUT
@@ -313,7 +314,8 @@ class CyteType:
         }
 
         try:
-            input_data = InputData(**input_data).model_dump()
+            validated_input = InputData(**cast(dict[str, Any], input_data))
+            input_data = validated_input.model_dump()
         except ValidationError as e:
             logger.error(f"Validation error: {e}")
             raise e
@@ -335,9 +337,7 @@ class CyteType:
         job_id = submit_job(
             {
                 "input_data": input_data,
-                "llm_configs": llm_configs
-                if llm_configs
-                else None,
+                "llm_configs": llm_configs if llm_configs else None,
             },
             api_url,
             auth_token=auth_token,
