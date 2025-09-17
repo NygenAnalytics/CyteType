@@ -8,7 +8,7 @@ from natsort import natsorted
 
 from .config import logger, DEFAULT_API_URL, DEFAULT_POLL_INTERVAL, DEFAULT_TIMEOUT
 from .client import submit_job, poll_for_results, check_job_status
-from .server_schema import LLMModelConfig
+from .server_schema import LLMModelConfig, InputData
 from .anndata_helpers import (
     _validate_adata,
     _calculate_pcent,
@@ -245,6 +245,7 @@ class CyteType:
         study_context: str,
         llm_configs: list[dict[str, Any]] | None = None,
         metadata: dict[str, Any] | None = None,
+        n_parallel_clusters: int = 2,
         results_prefix: str = "cytetype",
         poll_interval_seconds: int = DEFAULT_POLL_INTERVAL,
         timeout_seconds: int = DEFAULT_TIMEOUT,
@@ -267,6 +268,8 @@ class CyteType:
             metadata (dict[str, Any] | None, optional): Custom metadata tags to include in the report header.
                 Values that look like URLs will be made clickable in the report.
                 Defaults to None.
+            n_parallel_clusters (int, optional): Number of parallel requests to make to the model. Maximum is 50. Note than high values can lead to rate limit errors.
+                Defaults to 2.
             results_prefix (str, optional): Prefix for keys added to `adata.obs` and `adata.uns` to
                 store results. The final annotation column will be
                 `adata.obs[f"{results_key}_{group_key}"]`. Defaults to "cytetype".
@@ -306,7 +309,23 @@ class CyteType:
             "markerGenes": self.marker_genes,
             "visualizationData": self.visualization_data,
             "expressionData": self.expression_percentages,
+            "nParallelClusters": n_parallel_clusters,
         }
+
+        try:
+            input_data = InputData(**input_data).model_dump()
+        except ValidationError as e:
+            logger.error(f"Validation error: {e}")
+            raise e
+
+        if llm_configs:
+            try:
+                llm_configs = [LLMModelConfig(**x).model_dump() for x in llm_configs]
+            except ValidationError as e:
+                logger.error(f"Validation error: {e}")
+                raise e
+        else:
+            llm_configs = []
 
         if save_query:
             with open(query_filename, "w") as f:
@@ -316,7 +335,7 @@ class CyteType:
         job_id = submit_job(
             {
                 "input_data": input_data,
-                "llm_configs": [LLMModelConfig(**x).model_dump() for x in llm_configs]
+                "llm_configs": llm_configs
                 if llm_configs
                 else None,
             },
