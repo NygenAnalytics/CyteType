@@ -83,6 +83,12 @@ class InputData(BaseModel):
         default_factory=dict,
         description="Dictionary mapping gene names to their expression percentages across clusters",
     )
+    nParallelClusters: int = Field(
+        default=2,
+        ge=1,
+        le=50,
+        description="Number of parallel requests to make to the model",
+    )
 
     @classmethod
     def get_example(cls) -> "InputData":
@@ -151,4 +157,5 @@ class InputData(BaseModel):
                     "Cluster3": 5.2,
                 },
             },
+            nParallelClusters=5,
         )

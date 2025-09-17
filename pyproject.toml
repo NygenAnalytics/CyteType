@@ -5,10 +5,10 @@ description = "Python client for characterization of clusters from single-cell R
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "anndata~=0.11.4",
+    "anndata>=0.9.2",
     "loguru~=0.7.3",
     "natsort~=8.4.0",
-    "requests~=2.32.3",
+    "requests~=2.32.5",
     "pydantic~=2.11.7",
     "session-info~=1.0.1",
     "python-dotenv~=1.1.1",
@@ -26,12 +26,12 @@ Repository = "https://github.com/NygenAnalytics/cytetype"
 
 [dependency-groups]
 dev = [
-    "jupyterlab>=4.4.2",
-    "mypy>=1.15.0",
-    "pytest>=8.3.5",
-    "ruff>=0.11.7",
-    "scanpy>=1.11.1",
-    "types-requests>=2.32.0.20250328",
+    "jupyterlab>=4.4.6",
+    "mypy>=1.17.1",
+    "pytest>=8.4.1",
+    "ruff>=0.12.11",
+    "scanpy>=1.11.4",
+    "types-requests>=2.32.4.20250809",
 ]
 
 [build-system]
@@ -47,7 +47,7 @@ version = {attr = "cytetype.__version__"}
 [tool.mypy]
 strict = false
 
-python_version = "3.12"
+python_version = "3.11"
 
 disable_error_code = ["import-untyped"]
 
