@@ -30,6 +30,8 @@ Try <a href="https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsq
 
 **Atlas scale examples**: <a href="docs/examples.md">docs/examples.md</a>
 
+R version of CyteType for Seurat objects is also available here:  <a href="https://github.com/NygenAnalytics/CyteTypeR">CyteTypeR</a>
+
 ---
 <img width="2063" height="1857" alt="CyteType architecture" src="https://github.com/user-attachments/assets/c55f00a2-c4d1-420a-88c2-cdb507898383" />
 
