@@ -1,4 +1,5 @@
 <h1 align="left">CyteType</h1>
+<h4 align="left">Multi-agent AI driven cell annotation in single-cell transcriptomics</h4>
 
 <p align="left">
   <a href="https://github.com/NygenAnalytics/cytetype/actions/workflows/publish.yml">
@@ -23,20 +24,13 @@
 </p>
 
 ---
+<a href="https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsqRsh2N7?usp=sharing" target="_blank">Example Notebook</a> | 
+<a href="https://nygen-labs-prod--cytetype-api.modal.run/report/5b4eb3e1-fde7-4609-8be0-2bea015c241d?v=250722" target="_blank">Example output</a> | 
+<a href="docs/examples.md">Atlas scale results</a>
 
-CyteType is a Python client for single‑cell RNA‑seq cluster annnotation using multi-agent workflow.
+Switch to R/Seurat package: <a href="https://github.com/NygenAnalytics/CyteTypeR">CyteTypeR</a>
 
-Try <a href="https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsqRsh2N7?usp=sharing" target="_blank">Colab Notebook</a> or browse this <a href="https://nygen-labs-prod--cytetype-api.modal.run/report/5b4eb3e1-fde7-4609-8be0-2bea015c241d?v=250722" target="_blank">example HTML report</a>
-
-**Atlas scale examples**: <a href="docs/examples.md">docs/examples.md</a>
-
-R version of CyteType for Seurat objects is also available here:  <a href="https://github.com/NygenAnalytics/CyteTypeR">CyteTypeR</a>
-
----
-<img width="2063" height="1857" alt="CyteType architecture" src="https://github.com/user-attachments/assets/c55f00a2-c4d1-420a-88c2-cdb507898383" />
-
----
-
+Read Preprint: <a href="https://www.biorxiv.org/content/10.1101/2025.11.06.686964v1">BioRxiv</a>
 
 ## Installation
 `pip install cytetype`
@@ -81,3 +75,6 @@ print(adata.obs.cytetype_cellOntologyTerm_clusters)
 
 ## License
 Licensed under CC BY‑NC‑SA 4.0 — see <a href="LICENSE.md">LICENSE.md</a>.
+
+---
+<img width="2063" height="1857" alt="CyteType architecture" src="https://github.com/user-attachments/assets/c55f00a2-c4d1-420a-88c2-cdb507898383" />
