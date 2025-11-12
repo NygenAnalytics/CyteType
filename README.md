@@ -9,7 +9,7 @@
   <a href="https://pypi.org/project/cytetype/">
     <img src="https://img.shields.io/pypi/v/cytetype.svg" alt="PyPI version">
   </a>
-  <a href="https://github.com/NygenAnalytics/cytetype/blob/main/LICENSE">
+  <a href="https://raw.githubusercontent.com/NygenAnalytics/CyteType/refs/heads/master/LICENSE.md">
     <img src="https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg" alt="License: CC BY-NC-SA 4.0">
   </a>
   <a href="https://pypi.org/project/cytetype/">
@@ -22,7 +22,7 @@
 
 ---
 <a href="https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsqRsh2N7?usp=sharing" target="_blank">Example Notebook</a> | 
-<a href="https://nygen-labs-prod--cytetype-api.modal.run/report/5b4eb3e1-fde7-4609-8be0-2bea015c241d?v=250722" target="_blank">Example output</a> | 
+<a href="https://nygen-labs-prod--cytetype-api.modal.run/report/2b514924-334f-4f5c-aa25-347155586634?v=251123" target="_blank">Example output</a> | 
 <a href="docs/examples.md">Atlas scale results</a>
 
 Switch to R/Seurat package: <a href="https://github.com/NygenAnalytics/CyteTypeR">CyteTypeR</a>
