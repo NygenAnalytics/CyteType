@@ -15,7 +15,7 @@
   <a href="https://pypi.org/project/cytetype/">
     <img src="https://img.shields.io/pypi/dm/cytetype" alt="PyPI downloads">
   </a>
-  <a href="[https://discord.com/channels/1339594966300622908/1398003605545422998](https://discord.gg/V6QFM4AN)">
+  <a href="https://discord.gg/V6QFM4AN">
     <img src="https://img.shields.io/discord/1339594966300622908" alt="PyPI version">
   </a>
 </p>
