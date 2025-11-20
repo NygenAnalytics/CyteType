@@ -223,13 +223,15 @@ class CyteType:
             item["clusterId"]: item["ontologyTermID"]
             for item in result_data.get("annotations", [])
         }
-        self.adata.obs[f"{results_prefix}_ontologyTermID_{self.group_key}"] = pd.Series(
-            [
-                ontology_id_map.get(cluster_id, "Unknown")
-                for cluster_id in self.clusters
-            ],
-            index=self.adata.obs.index,
-        ).astype("category")
+        self.adata.obs[f"{results_prefix}_cellOntologyTermID_{self.group_key}"] = (
+            pd.Series(
+                [
+                    ontology_id_map.get(cluster_id, "Unknown")
+                    for cluster_id in self.clusters
+                ],
+                index=self.adata.obs.index,
+            ).astype("category")
+        )
 
         # Update cell states
         cell_state_map = {
