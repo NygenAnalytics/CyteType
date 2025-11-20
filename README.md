@@ -22,7 +22,7 @@
 
 ---
 <a href="https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsqRsh2N7?usp=sharing" target="_blank">Example Notebook</a> | 
-<a href="https://nygen-labs-prod--cytetype-api.modal.run/report/2b514924-334f-4f5c-aa25-347155586634?v=251123" target="_blank">Example output</a> | 
+<a href="https://prod.cytetype.nygen.io/report/2b514924-334f-4f5c-aa25-347155586634?v=251123" target="_blank">Example output</a> | 
 <a href="docs/examples.md">Atlas scale results</a>
 
 Switch to R/Seurat package: <a href="https://github.com/NygenAnalytics/CyteTypeR">CyteTypeR</a>
