@@ -93,16 +93,19 @@ def test_cytetype_success(
                 "clusterId": "1",
                 "annotation": "Cell Type A",
                 "ontologyTerm": "CL:0000001",
+                "ontologyTermID": "CL:0000001",
             },  # Corresponds to '0'
             {
                 "clusterId": "2",
                 "annotation": "Cell Type B",
                 "ontologyTerm": "CL:0000002",
+                "ontologyTermID": "CL:0000002",
             },  # Corresponds to '1'
             {
                 "clusterId": "3",
                 "annotation": "Cell Type C",
                 "ontologyTerm": "CL:0000003",
+                "ontologyTermID": "CL:0000003",
             },  # Corresponds to '2'
         ]
     }
@@ -265,16 +268,19 @@ def test_cytetype_with_auth_token(
                 "clusterId": "1",
                 "annotation": "Cell Type A",
                 "ontologyTerm": "CL:0000001",
+                "ontologyTermID": "CL:0000001",
             },
             {
                 "clusterId": "2",
                 "annotation": "Cell Type B",
                 "ontologyTerm": "CL:0000002",
+                "ontologyTermID": "CL:0000002",
             },
             {
                 "clusterId": "3",
                 "annotation": "Cell Type C",
                 "ontologyTerm": "CL:0000003",
+                "ontologyTermID": "CL:0000003",
             },
         ]
     }
@@ -312,6 +318,7 @@ def test_cytetype_get_results_helper(
                 "clusterId": "1",
                 "annotation": "Cell Type A",
                 "ontologyTerm": "CL:0000001",
+                "ontologyTermID": "CL:0000001",
             },
         ]
     }
@@ -362,6 +369,7 @@ def test_cytetype_with_metadata(
                 "clusterId": "1",
                 "annotation": "Cell Type A",
                 "ontologyTerm": "CL:0000001",
+                "ontologyTermID": "CL:0000001",
             },
         ]
     }
@@ -407,6 +415,7 @@ def test_cytetype_without_metadata(
                 "clusterId": "1",
                 "annotation": "Cell Type A",
                 "ontologyTerm": "CL:0000001",
+                "ontologyTermID": "CL:0000001",
             },
         ]
     }
@@ -419,6 +428,113 @@ def test_cytetype_without_metadata(
     mock_submit.assert_called_once()
     query_arg, _ = mock_submit.call_args[0]
     assert "metadata" not in query_arg
+
+
+@patch("cytetype.main.submit_job")
+@patch("cytetype.main.poll_for_results")
+def test_cytetype_obs_columns(
+    mock_poll: MagicMock, mock_submit: MagicMock, mock_adata: anndata.AnnData
+) -> None:
+    """Test that all expected obs columns are created with correct names and values."""
+    job_id = "mock_job_obs_columns"
+    mock_submit.return_value = job_id
+    mock_result: dict[str, list[dict[str, str]]] = {
+        "annotations": [
+            {
+                "clusterId": "1",
+                "annotation": "T cell",
+                "ontologyTerm": "T cell",
+                "ontologyTermID": "CL:0000084",
+                "cellState": "activated",
+            },
+            {
+                "clusterId": "2",
+                "annotation": "B cell",
+                "ontologyTerm": "B cell",
+                "ontologyTermID": "CL:0000236",
+                "cellState": "naive",
+            },
+            {
+                "clusterId": "3",
+                "annotation": "Monocyte",
+                "ontologyTerm": "monocyte",
+                "ontologyTermID": "CL:0000576",
+                "cellState": "",  # Empty cell state
+            },
+        ]
+    }
+    mock_poll.return_value = mock_result
+
+    group_key = "leiden"
+    results_prefix = "cytetype"
+
+    cytetype = CyteType(mock_adata, group_key=group_key)
+    adata_result = cytetype.run(study_context="Test study context")
+
+    # Check all expected obs columns exist
+    expected_columns = [
+        f"{results_prefix}_annotation_{group_key}",
+        f"{results_prefix}_cellOntologyTerm_{group_key}",
+        f"{results_prefix}_cellOntologyTermID_{group_key}",
+        f"{results_prefix}_cellState_{group_key}",
+    ]
+
+    for col in expected_columns:
+        assert col in adata_result.obs, f"Column {col} not found in obs"
+        assert isinstance(adata_result.obs[col].dtype, pd.CategoricalDtype), (
+            f"Column {col} is not categorical"
+        )
+
+    # Check annotation values are correctly mapped
+    anno_col = f"{results_prefix}_annotation_{group_key}"
+    ct_map = {"0": "1", "1": "2", "2": "3"}  # cluster label -> cluster ID mapping
+    anno_map = {"1": "T cell", "2": "B cell", "3": "Monocyte"}
+    expected_annotations = [
+        anno_map[ct_map[str(label)]] for label in mock_adata.obs[group_key]
+    ]
+    pd.testing.assert_series_equal(
+        adata_result.obs[anno_col],
+        pd.Series(expected_annotations, index=mock_adata.obs.index, dtype="category"),
+        check_names=False,
+    )
+
+    # Check ontologyTerm values are correctly mapped
+    ontology_term_col = f"{results_prefix}_cellOntologyTerm_{group_key}"
+    ontology_term_map = {"1": "T cell", "2": "B cell", "3": "monocyte"}
+    expected_ontology_terms = [
+        ontology_term_map[ct_map[str(label)]] for label in mock_adata.obs[group_key]
+    ]
+    pd.testing.assert_series_equal(
+        adata_result.obs[ontology_term_col],
+        pd.Series(
+            expected_ontology_terms, index=mock_adata.obs.index, dtype="category"
+        ),
+        check_names=False,
+    )
+
+    # Check ontologyTermID values are correctly mapped
+    ontology_id_col = f"{results_prefix}_cellOntologyTermID_{group_key}"
+    ontology_id_map = {"1": "CL:0000084", "2": "CL:0000236", "3": "CL:0000576"}
+    expected_ontology_ids = [
+        ontology_id_map[ct_map[str(label)]] for label in mock_adata.obs[group_key]
+    ]
+    pd.testing.assert_series_equal(
+        adata_result.obs[ontology_id_col],
+        pd.Series(expected_ontology_ids, index=mock_adata.obs.index, dtype="category"),
+        check_names=False,
+    )
+
+    # Check cellState values are correctly mapped (including empty string)
+    cell_state_col = f"{results_prefix}_cellState_{group_key}"
+    cell_state_map = {"1": "activated", "2": "naive", "3": ""}
+    expected_cell_states = [
+        cell_state_map[ct_map[str(label)]] for label in mock_adata.obs[group_key]
+    ]
+    pd.testing.assert_series_equal(
+        adata_result.obs[cell_state_col],
+        pd.Series(expected_cell_states, index=mock_adata.obs.index, dtype="category"),
+        check_names=False,
+    )
 
 
 # --- TODO ---
