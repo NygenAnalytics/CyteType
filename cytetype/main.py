@@ -218,6 +218,29 @@ class CyteType:
             ).astype("category")
         )
 
+        # Update ontology term IDs
+        ontology_id_map = {
+            item["clusterId"]: item["ontologyTermID"]
+            for item in result_data.get("annotations", [])
+        }
+        self.adata.obs[f"{results_prefix}_ontologyTermID_{self.group_key}"] = pd.Series(
+            [
+                ontology_id_map.get(cluster_id, "Unknown")
+                for cluster_id in self.clusters
+            ],
+            index=self.adata.obs.index,
+        ).astype("category")
+
+        # Update cell states
+        cell_state_map = {
+            item["clusterId"]: item.get("cellState", "")
+            for item in result_data.get("annotations", [])
+        }
+        self.adata.obs[f"{results_prefix}_cellState_{self.group_key}"] = pd.Series(
+            [cell_state_map.get(cluster_id, "") for cluster_id in self.clusters],
+            index=self.adata.obs.index,
+        ).astype("category")
+
         # Check for unannotated clusters if requested
         if check_unannotated:
             unannotated_clusters = set(
@@ -238,6 +261,8 @@ class CyteType:
         logger.success(
             f"Annotations successfully added to `adata.obs['{results_prefix}_annotation_{self.group_key}']`\n"
             f"Ontology terms added to `adata.obs['{results_prefix}_cellOntologyTerm_{self.group_key}']`\n"
+            f"Ontology term IDs added to `adata.obs['{results_prefix}_ontologyTermID_{self.group_key}']`\n"
+            f"Cell states added to `adata.obs['{results_prefix}_cellState_{self.group_key}']`\n"
             f"Full results added to `adata.uns['{results_prefix}_results']`."
         )
 
