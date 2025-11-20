@@ -11,6 +11,6 @@ logger.add(
 )
 
 
-DEFAULT_API_URL = "https://nygen-labs-prod--cytetype-api.modal.run"
+DEFAULT_API_URL = "https://prod.cytetype.nygen.io"
 DEFAULT_POLL_INTERVAL = 10
 DEFAULT_TIMEOUT = 7200
