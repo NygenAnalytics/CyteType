@@ -22,7 +22,7 @@
 
 ---
 <a href="https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsqRsh2N7?usp=sharing" target="_blank">Example Notebook</a> | 
-<a href="https://nygen-labs-prod--cytetype-api.modal.run/report/2b514924-334f-4f5c-aa25-347155586634?v=251123" target="_blank">Example output</a> | 
+<a href="https://prod.cytetype.nygen.io/report/2b514924-334f-4f5c-aa25-347155586634?v=251123" target="_blank">Example output</a> | 
 <a href="docs/examples.md">Atlas scale results</a>
 
 Switch to R/Seurat package: <a href="https://github.com/NygenAnalytics/CyteTypeR">CyteTypeR</a>
@@ -47,19 +47,25 @@ sc.pp.log1p(adata)
 sc.pp.highly_variable_genes(adata, n_top_genes=1000)
 sc.pp.pca(adata)
 sc.pp.neighbors(adata)
-sc.tl.leiden(adata, key_added="clusters")
-sc.tl.rank_genes_groups(adata, groupby="clusters", method="t-test")
+
+group_key = 'clusters'  # Wherever you want to store or already have clusters in adata.obs
+
+sc.tl.leiden(adata, key_added=group_key)
+sc.tl.umap(adata)
+sc.tl.rank_genes_groups(adata, groupby=group_key, method="t-test")
 # ------ Example Scanpy Pipeline ------
 
 # ------ CyteType ------
-annotator = CyteType(adata, group_key="clusters")
+annotator = CyteType(adata, group_key=group_key)
 adata = annotator.run(
     study_context="Brief study description (e.g., Human brain tissue ...)",
 )
 
-# View results
-print(adata.obs.cytetype_annotation_clusters)
-print(adata.obs.cytetype_cellOntologyTerm_clusters)
+# Visualize results
+sc.pl.embedding(adata, basis='umap', color=f'cytetype_annotation_{group_key}')
+sc.pl.embedding(adata, basis='umap', color=f'cytetype_cellOntologyTerm_{group_key}')
+sc.pl.embedding(adata, basis='umap', color=f'cytetype_ontologyTermID_{group_key}')
+sc.pl.embedding(adata, basis='umap', color=f'cytetype_cellState_{group_key}')
 ```
 
 ## Documentation

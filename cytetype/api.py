@@ -157,6 +157,9 @@ def _transform_results(results_data: Dict[str, Any]) -> Dict[str, Any]:
                         "clusterId": annotation_data.get("clusterId", cluster_id),
                         "annotation": annotation_data.get("annotation", "Unknown"),
                         "ontologyTerm": annotation_data.get(
+                            "cellOntologyTermName", "Unknown"
+                        ),
+                        "ontologyTermID": annotation_data.get(
                             "cellOntologyTerm", "Unknown"
                         ),
                         # Include additional fields from new format
