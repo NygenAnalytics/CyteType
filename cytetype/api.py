@@ -162,7 +162,6 @@ def _transform_results(results_data: Dict[str, Any]) -> Dict[str, Any]:
                         "ontologyTermID": annotation_data.get(
                             "cellOntologyTerm", "Unknown"
                         ),
-                        # Include additional fields from new format
                         "granularAnnotation": annotation_data.get(
                             "granularAnnotation", ""
                         ),
@@ -183,13 +182,11 @@ def _transform_results(results_data: Dict[str, Any]) -> Dict[str, Any]:
                     }
                     annotations_list.append(transformed_annotation)
 
-    # Build result in expected format
     return {
         "annotations": annotations_list,
         "summary": results_data.get("summary", {}),
-        "semanticOrder": results_data.get("semanticOrder", []),
+        "clusterCategories": results_data.get("clusterCategories", []),
         "studyContext": results_data.get("studyContext", ""),
-        # Include raw annotations for advanced usage
         "raw_annotations": annotations_dict,
     }
 
