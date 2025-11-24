@@ -64,7 +64,7 @@ adata = annotator.run(
 # Visualize results
 sc.pl.embedding(adata, basis='umap', color=f'cytetype_annotation_{group_key}')
 sc.pl.embedding(adata, basis='umap', color=f'cytetype_cellOntologyTerm_{group_key}')
-sc.pl.embedding(adata, basis='umap', color=f'cytetype_ontologyTermID_{group_key}')
+sc.pl.embedding(adata, basis='umap', color=f'cytetype_cellOntologyTermID_{group_key}')
 sc.pl.embedding(adata, basis='umap', color=f'cytetype_cellState_{group_key}')
 ```
 
