@@ -51,8 +51,9 @@ pip install cytetype
 import scanpy as sc
 from cytetype import CyteType
 
-# Assumes preprocessed AnnData with clusters and marker genes
-annotator = CyteType(adata, group_key='clusters')
+# Assumes preprocessed AnnData with clusters and marker genes for "adata.obs.clusters")
+group_key = 'clusters'
+annotator = CyteType(adata, group_key=group_key, rank_key='rank_genes_' + group_key, n_top_genes=100)
 adata = annotator.run(study_context="Human PBMC from healthy donor")
 sc.pl.umap(adata, color='cytetype_annotation_clusters')
 ```
