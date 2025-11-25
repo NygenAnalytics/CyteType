@@ -51,6 +51,8 @@ CyteType addresses this with a novel agentic architecture: specialized AI agents
 
 Also included: interactive HTML reports, Scanpy/Seurat compatibility (R wrapper via [CyteTypeR](https://github.com/NygenAnalytics/CyteTypeR)), and no API keys required out of the box.
 
+📹 [Watch CyteType intro video](https://vimeo.com/nygen/cytetype)
+
 ---
 
 ## Quick Start
