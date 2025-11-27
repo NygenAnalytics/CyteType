@@ -23,8 +23,6 @@ Integrates with **Scanpy** and **Seurat** workflows.
 
 ---
 
-> **Upcoming open Webinar:** Nov. 26. 2025: [Registration link](https://attendee.gotowebinar.com/register/1731194703386732893) - Learn more about CyteType from the developers
-
 > **Preprint published:** Nov. 7, 2025: [bioRxiv link](https://www.biorxiv.org/content/10.1101/2025.11.06.686964v1) - Dive into benchmarking results
 
 ---
