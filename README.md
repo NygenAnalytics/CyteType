@@ -5,7 +5,7 @@
   <a href="https://github.com/NygenAnalytics/cytetype/actions/workflows/publish.yml">
     <img src="https://github.com/NygenAnalytics/cytetype/actions/workflows/publish.yml/badge.svg" alt="CI Status">
   </a>
-  <img src="https://img.shields.io/badge/python-≥3.11-blue.svg" alt="Python Version">
+  <img src="https://img.shields.io/badge/python-≥3.12-blue.svg" alt="Python Version">
   <a href="https://pypi.org/project/cytetype/">
     <img src="https://img.shields.io/pypi/v/cytetype.svg" alt="PyPI version">
   </a>
