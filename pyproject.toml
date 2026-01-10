@@ -3,15 +3,15 @@ name = "cytetype"
 dynamic = ["version"]
 description = "Python client for characterization of clusters from single-cell RNA-seq data."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
-    "anndata>=0.9.2",
+    "anndata~=0.12.7",
     "loguru~=0.7.3",
     "natsort~=8.4.0",
     "requests~=2.32.5",
-    "pydantic~=2.11.7",
+    "pydantic~=2.12.5",
     "session-info~=1.0.1",
-    "python-dotenv~=1.1.1",
+    "python-dotenv~=1.2.1",
 ]
 authors = [
     {name = "Parashar Dhapola", email = "parashar@nygen.io"}
@@ -26,16 +26,19 @@ Repository = "https://github.com/NygenAnalytics/cytetype"
 
 [dependency-groups]
 dev = [
-    "jupyterlab>=4.4.6",
-    "mypy>=1.17.1",
-    "pytest>=8.4.1",
-    "ruff>=0.12.11",
-    "scanpy>=1.11.4",
-    "types-requests>=2.32.4.20250809",
+    "jupyterlab~=4.4.6",
+    "mypy~=1.19.1",
+    "pytest~=9.0.2",
+    "ruff~=0.14.11",
+    "scanpy~=1.11.5",
+    "igraph~=1.0.0",
+    "leidenalg~=0.11.0",
+    "types-requests~=2.32.4.20260107",
+    "pytest-cov>=7.0.0",
 ]
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=80.9.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -47,7 +50,7 @@ version = {attr = "cytetype.__version__"}
 [tool.mypy]
 strict = false
 
-python_version = "3.11"
+python_version = "3.12"
 
 disable_error_code = ["import-untyped"]
 
@@ -64,3 +67,5 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 
 ignore_missing_imports = false
+
+exclude = ["^build/", "^dist/", "^.*\\.egg-info/"]

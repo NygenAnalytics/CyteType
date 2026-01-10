@@ -3,7 +3,17 @@ from pydantic import BaseModel, Field, model_validator
 
 
 LLMProvider: TypeAlias = Literal[
-    "google", "openai", "anthropic", "groq", "mistral", "openrouter", "bedrock"
+    "anthropic",
+    "bedrock",
+    "fireworks",
+    "google",
+    "groq",
+    "huggingface",
+    "mistral",
+    "openai",
+    "openrouter",
+    "vertex",
+    "xai",
 ]
 AgentType: TypeAlias = Literal[
     "contextualizer", "annotator", "reviewer", "summarizer", "clinician", "chat"
@@ -159,3 +169,24 @@ class InputData(BaseModel):
             },
             nParallelClusters=5,
         )
+
+
+# New schemas for API responses
+class ErrorResponse(BaseModel):
+    """Standard error response from CyteType API."""
+
+    error_code: str = Field(description="Machine-readable error identifier")
+    message: str = Field(description="Human-readable error message with context")
+
+
+class JobSubmitResponse(BaseModel):
+    """Response from /annotate endpoint."""
+
+    job_id: str
+
+
+class JobStatusResponse(BaseModel):
+    """Response from /status/{job_id} endpoint."""
+
+    jobStatus: Literal["pending", "processing", "completed", "failed"]
+    clusterStatus: dict[str, str] = Field(default_factory=dict)
