@@ -5,10 +5,11 @@ import anndata
 import numpy as np
 import pandas as pd
 import scanpy as sc
+from typing import Any
 
 
 @pytest.fixture
-def mock_adata():
+def mock_adata() -> anndata.AnnData:
     """Create minimal but realistic AnnData for testing.
 
     Returns:
@@ -49,7 +50,7 @@ def mock_adata():
 
 
 @pytest.fixture
-def mock_api_response():
+def mock_api_response() -> dict[str, Any]:
     """Standard successful API response for mocking.
 
     Returns:
