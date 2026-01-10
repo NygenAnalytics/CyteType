@@ -1,21 +1,23 @@
-from typing import Any, cast
-import json
+from typing import Any
 
 import anndata
-import pandas as pd
 from natsort import natsorted
-from pydantic import ValidationError
 
-
-from .config import logger, DEFAULT_API_URL, DEFAULT_POLL_INTERVAL, DEFAULT_TIMEOUT
-from .client import submit_job, poll_for_results, check_job_status
-from .server_schema import LLMModelConfig, InputData
-from .anndata_helpers import (
-    _validate_adata,
-    _calculate_pcent,
-    _get_markers,
-    _aggregate_metadata,
-    _extract_sampled_coordinates,
+from .config import logger
+from .api import submit_annotation_job, wait_for_completion
+from .preprocessing import (
+    validate_adata,
+    aggregate_expression_percentages,
+    extract_marker_genes,
+    aggregate_cluster_metadata,
+    extract_visualization_coordinates,
+)
+from .core.payload import build_annotation_payload, save_query_to_file
+from .core.results import (
+    store_job_details,
+    store_annotations,
+    load_local_results,
+    fetch_remote_results,
 )
 
 __all__ = ["CyteType"]
@@ -57,6 +59,8 @@ class CyteType:
         pcent_batch_size: int = 2000,
         coordinates_key: str = "X_umap",
         max_cells_per_group: int = 1000,
+        api_url: str = "https://prod.cytetype.nygen.io",
+        auth_token: str | None = None,
     ) -> None:
         """Initialize CyteType with AnnData object and perform data preparation.
 
@@ -85,6 +89,10 @@ class CyteType:
             max_cells_per_group (int, optional): Maximum number of cells to sample per group
                 for visualization. If a group has more cells than this limit, a random sample
                 will be taken. Defaults to 1000.
+            api_url (str, optional): URL for the CyteType API endpoint. Only change if using a custom
+                deployment. Defaults to "https://prod.cytetype.nygen.io".
+            auth_token (str | None, optional): Bearer token for API authentication. If provided,
+                will be included in the Authorization header as "Bearer {auth_token}". Defaults to None.
 
         Raises:
             KeyError: If the required keys are missing in `adata.obs` or `adata.uns`
@@ -98,12 +106,13 @@ class CyteType:
         self.pcent_batch_size = pcent_batch_size
         self.coordinates_key = coordinates_key
         self.max_cells_per_group = max_cells_per_group
+        self.api_url = api_url
+        self.auth_token = auth_token
 
         # Validate data and get the best available coordinates key
-        validated_coordinates_key = _validate_adata(
+        self.coordinates_key = validate_adata(
             adata, group_key, rank_key, gene_symbols_column, coordinates_key
         )
-        self.coordinates_key = validated_coordinates_key
 
         self.cluster_map = {
             str(x): str(n + 1)
@@ -113,26 +122,27 @@ class CyteType:
             self.cluster_map[str(x)] for x in adata.obs[group_key].values.tolist()
         ]
 
-        logger.info("Calculating expression percentages.")
-        self.expression_percentages = _calculate_pcent(
+        logger.info("Calculating expression percentages...")
+        self.expression_percentages = aggregate_expression_percentages(
             adata=adata,
             clusters=self.clusters,
             batch_size=pcent_batch_size,
             gene_names=adata.var[self.gene_symbols_column].tolist(),
         )
 
-        logger.info("Extracting marker genes.")
-        self.marker_genes = _get_markers(
+        logger.info("Extracting marker genes...")
+        self.marker_genes = extract_marker_genes(
             adata=self.adata,
             cell_group_key=self.group_key,
             rank_genes_key=self.rank_key,
-            ct_map=self.cluster_map,
+            cluster_map=self.cluster_map,
             n_top_genes=n_top_genes,
             gene_symbols_col=self.gene_symbols_column,
         )
 
         if aggregate_metadata:
-            self.group_metadata = _aggregate_metadata(
+            logger.info("Aggregating cluster metadata...")
+            self.group_metadata = aggregate_cluster_metadata(
                 adata=self.adata,
                 group_key=self.group_key,
                 min_percentage=min_percentage,
@@ -149,8 +159,8 @@ class CyteType:
             self.group_metadata = {}
 
         # Prepare visualization data with sampling
-        logger.info("Preparing visualization data with sampling.")
-        sampled_coordinates, sampled_cluster_labels = _extract_sampled_coordinates(
+        logger.info("Extracting sampled visualization coordinates...")
+        sampled_coordinates, sampled_cluster_labels = extract_visualization_coordinates(
             adata=adata,
             coordinates_key=self.coordinates_key,
             group_key=self.group_key,
@@ -165,109 +175,6 @@ class CyteType:
 
         logger.info("Data preparation completed. Ready for submitting jobs.")
 
-    def _store_results_and_annotations(
-        self,
-        result_data: dict[str, Any],
-        job_id: str,
-        results_prefix: str,
-        check_unannotated: bool = True,
-    ) -> None:
-        """Store API results and update annotations in the AnnData object.
-
-        Args:
-            result_data: The result dictionary from the API
-            job_id: The job ID
-            results_prefix: Prefix for storing results
-            check_unannotated: Whether to check and warn about unannotated clusters
-        """
-        # Store results in AnnData object (excluding marker_genes and visualization_data)
-        filtered_result_data = {
-            k: v
-            for k, v in result_data.items()
-            if k not in ["marker_genes", "visualization_data"]
-        }
-        self.adata.uns[f"{results_prefix}_results"] = {
-            "job_id": job_id,
-            "result": json.dumps(
-                filtered_result_data
-            ),  # Convert to JSON string for HDF5 compatibility
-        }
-
-        # Update annotations
-        annotation_map = {
-            item["clusterId"]: item["annotation"]
-            for item in result_data.get("annotations", [])
-        }
-        self.adata.obs[f"{results_prefix}_annotation_{self.group_key}"] = pd.Series(
-            [annotation_map.get(cluster_id, "Unknown") for cluster_id in self.clusters],
-            index=self.adata.obs.index,
-        ).astype("category")
-
-        # Update ontology terms
-        ontology_map = {
-            item["clusterId"]: item["ontologyTerm"]
-            for item in result_data.get("annotations", [])
-        }
-        self.adata.obs[f"{results_prefix}_cellOntologyTerm_{self.group_key}"] = (
-            pd.Series(
-                [
-                    ontology_map.get(cluster_id, "Unknown")
-                    for cluster_id in self.clusters
-                ],
-                index=self.adata.obs.index,
-            ).astype("category")
-        )
-
-        # Update ontology term IDs
-        ontology_id_map = {
-            item["clusterId"]: item["ontologyTermID"]
-            for item in result_data.get("annotations", [])
-        }
-        self.adata.obs[f"{results_prefix}_cellOntologyTermID_{self.group_key}"] = (
-            pd.Series(
-                [
-                    ontology_id_map.get(cluster_id, "Unknown")
-                    for cluster_id in self.clusters
-                ],
-                index=self.adata.obs.index,
-            ).astype("category")
-        )
-
-        # Update cell states
-        cell_state_map = {
-            item["clusterId"]: item.get("cellState", "")
-            for item in result_data.get("annotations", [])
-        }
-        self.adata.obs[f"{results_prefix}_cellState_{self.group_key}"] = pd.Series(
-            [cell_state_map.get(cluster_id, "") for cluster_id in self.clusters],
-            index=self.adata.obs.index,
-        ).astype("category")
-
-        # Check for unannotated clusters if requested
-        if check_unannotated:
-            unannotated_clusters = set(
-                [
-                    cluster_id
-                    for cluster_id in self.clusters
-                    if cluster_id not in annotation_map
-                ]
-            )
-
-            if unannotated_clusters:
-                logger.warning(
-                    f"No annotations received from API for cluster IDs: {unannotated_clusters}. "
-                    f"Corresponding cells marked as 'Unknown Annotation'."
-                )
-
-        # Log success message
-        logger.success(
-            f"Annotations successfully added to `adata.obs['{results_prefix}_annotation_{self.group_key}']`\n"
-            f"Ontology terms added to `adata.obs['{results_prefix}_cellOntologyTerm_{self.group_key}']`\n"
-            f"Ontology term IDs added to `adata.obs['{results_prefix}_ontologyTermID_{self.group_key}']`\n"
-            f"Cell states added to `adata.obs['{results_prefix}_cellState_{self.group_key}']`\n"
-            f"Full results added to `adata.uns['{results_prefix}_results']`."
-        )
-
     def run(
         self,
         study_context: str,
@@ -275,13 +182,14 @@ class CyteType:
         metadata: dict[str, Any] | None = None,
         n_parallel_clusters: int = 2,
         results_prefix: str = "cytetype",
-        poll_interval_seconds: int = DEFAULT_POLL_INTERVAL,
-        timeout_seconds: int = DEFAULT_TIMEOUT,
-        api_url: str = DEFAULT_API_URL,
+        poll_interval_seconds: int = 10,
+        timeout_seconds: int = 7200,
+        api_url: str | None = None,
+        auth_token: str | None = None,
         save_query: bool = True,
         query_filename: str = "query.json",
-        auth_token: str | None = None,
         show_progress: bool = True,
+        override_existing_results: bool = False,
     ) -> anndata.AnnData:
         """Perform cluster characterization using the CyteType API.
 
@@ -302,18 +210,24 @@ class CyteType:
                 store results. The final annotation column will be
                 `adata.obs[f"{results_key}_{group_key}"]`. Defaults to "cytetype".
             poll_interval_seconds (int, optional): How often (in seconds) to check for results from
-                the API. Defaults to DEFAULT_POLL_INTERVAL.
+                the API. Defaults to 10.
             timeout_seconds (int, optional): Maximum time (in seconds) to wait for API results before
-                raising a timeout error. Defaults to DEFAULT_TIMEOUT.
-            api_url (str, optional): URL for the CyteType API endpoint. Only change if using a custom
-                deployment. Defaults to DEFAULT_API_URL.
+                raising a timeout error. Defaults to 7200.
+            api_url (str, optional): URL for the CyteType API endpoint. If not provided, the API URL
+                specified in the initialization will be used. If provided, it will override the API URL
+                specified in the initialization.
+            auth_token (str | None, optional): Bearer token for API authentication. If not provided, the auth token
+                specified in the initialization will be used. If provided, it will override the auth token
+                specified in the initialization.
             save_query (bool, optional): Whether to save the query to a file. Defaults to True.
             query_filename (str, optional): Filename for saving the query when save_query is True.
                 Defaults to "query.json".
-            auth_token (str | None, optional): Bearer token for API authentication. If provided,
-                will be included in the Authorization header as "Bearer {auth_token}". Defaults to None.
             show_progress (bool, optional): Whether to display progress updates with spinner and
                 cluster status. Set to False to disable all visual progress output. Defaults to True.
+            override_existing_results (bool, optional): Whether to override existing results with the
+                same results_prefix. If False (default) and results already exist, will raise an error
+                to prevent accidental overwriting. Set to True to explicitly allow overwriting.
+                Defaults to False.
 
         Returns:
             anndata.AnnData: The input AnnData object, modified in place with the following additions:
@@ -321,121 +235,95 @@ class CyteType:
                 - `adata.uns[f"{results_prefix}_results"]`: Complete API response data and job tracking info
 
         Raises:
+            ValueError: If results with the same prefix already exist and override_existing_results is False
             CyteTypeAPIError: If the API request fails or returns invalid data
             CyteTypeTimeoutError: If the API does not return results within the specified timeout period
 
         """
-        api_url = api_url.rstrip("/")
+        # Check for existing results
+        job_details_key = f"{results_prefix}_jobDetails"
+        if job_details_key in self.adata.uns and not override_existing_results:
+            existing_job_id = self.adata.uns[job_details_key].get("job_id", "unknown")
+            raise ValueError(
+                f"Results with prefix '{results_prefix}' already exist in this AnnData object "
+                f"(job_id: {existing_job_id}). To prevent accidental overwriting, please either:\n"
+                f"  1. Use a different results_prefix (e.g., results_prefix='cytetype_v2')\n"
+                f"  2. Set override_existing_results=True to explicitly overwrite existing results\n"
+                f"  3. Use annotator.get_results(results_prefix='{results_prefix}') to retrieve existing results"
+            )
 
-        # Prepare API query
-        # Transform to match new server API structure
-        input_data = {
-            "studyInfo": study_context,
-            "infoTags": metadata or {},
-            "clusterLabels": {v: k for k, v in self.cluster_map.items()},
-            "clusterMetadata": self.group_metadata,
-            "markerGenes": self.marker_genes,
-            "visualizationData": self.visualization_data,
-            "expressionData": self.expression_percentages,
-            "nParallelClusters": n_parallel_clusters,
-        }
+        if api_url:
+            self.api_url = api_url.strip("/")
+        if auth_token:
+            self.auth_token = auth_token
 
-        try:
-            validated_input = InputData(**cast(dict[str, Any], input_data))
-            input_data = validated_input.model_dump()
-        except ValidationError as e:
-            logger.error(f"Validation error: {e}")
-            raise e
-
-        if llm_configs:
-            try:
-                llm_configs = [LLMModelConfig(**x).model_dump() for x in llm_configs]
-            except ValidationError as e:
-                logger.error(f"Validation error: {e}")
-                raise e
-        else:
-            llm_configs = []
-
-        if save_query:
-            with open(query_filename, "w") as f:
-                json.dump(input_data, f)
-
-        # Submit job and poll for results
-        job_id = submit_job(
-            {
-                "input_data": input_data,
-                "llm_configs": llm_configs if llm_configs else None,
-            },
-            api_url,
-            auth_token=auth_token,
+        # Build and validate payload
+        payload = build_annotation_payload(
+            study_context,
+            metadata,
+            self.cluster_map,
+            self.group_metadata,
+            self.marker_genes,
+            self.visualization_data,
+            self.expression_percentages,
+            n_parallel_clusters,
+            llm_configs,
         )
 
-        # Store job details (job_id, report link) for potential later retrieval
-        report_url = f"{api_url}/report/{job_id}"
+        # Save query if requested
+        if save_query:
+            save_query_to_file(payload["input_data"], query_filename)
 
-        self.adata.uns[f"{results_prefix}_jobDetails"] = {
-            "job_id": job_id,
-            "report_url": report_url,
-            "api_url": api_url,
-            "auth_token": auth_token if auth_token else None,
-        }
+        # Submit job and store details
+        job_id = submit_annotation_job(self.api_url, self.auth_token, payload)
+        store_job_details(self.adata, job_id, self.api_url, results_prefix)
 
-        result = poll_for_results(
+        # Wait for completion
+        result = wait_for_completion(
+            self.api_url,
+            self.auth_token,
             job_id,
-            api_url,
             poll_interval_seconds,
             timeout_seconds,
-            auth_token=auth_token,
-            show_progress=show_progress,
+            show_progress,
         )
 
-        self._store_results_and_annotations(
+        # Store results
+        store_annotations(
+            self.adata,
             result,
             job_id,
             results_prefix,
+            self.group_key,
+            self.clusters,
             check_unannotated=True,
         )
 
         return self.adata
 
-    def get_results(self, results_prefix: str = "cytetype") -> dict[str, Any] | None:
+    def get_results(
+        self,
+        results_prefix: str = "cytetype",
+    ) -> dict[str, Any] | None:
         """Retrieve the CyteType results from the AnnData object.
 
         If results are not available locally but job details exist, attempts to retrieve
         results from the API with a single request (no polling).
 
         Args:
-            results_prefix (str): The prefix used when storing results. Defaults to "cytetype".
+            results_prefix: The prefix used when storing results. Defaults to "cytetype".
 
         Returns:
             dict[str, Any] | None: The original result dictionary from the API, or None if not found.
         """
-        results_key = f"{results_prefix}_results"
+        logger.info(f"Retrieving results with prefix: '{results_prefix}'")
 
-        # First check if results already exist locally
-        if results_key in self.adata.uns:
-            stored_results = self.adata.uns[results_key]
-            if "result" in stored_results:
-                # The result is stored as a JSON string for HDF5 compatibility
-                try:
-                    result = json.loads(stored_results["result"])
-                    if isinstance(result, dict):
-                        return result
-                    else:
-                        logger.warning(
-                            f"Expected dict from stored result, got {type(result)}"
-                        )
-                except (json.JSONDecodeError, TypeError):
-                    # Fallback for cases where result might still be a dict (backwards compatibility)
-                    result = stored_results["result"]
-                    if isinstance(result, dict):
-                        return result
-                    else:
-                        logger.warning(
-                            f"Expected dict from stored result fallback, got {type(result)}"
-                        )
+        # Try loading from local storage first
+        local_result = load_local_results(self.adata, results_prefix)
+        if local_result:
+            return local_result
 
-        # If no results found locally, try to retrieve using stored job details
+        # Try fetching from API if job details exist
         job_details_key = f"{results_prefix}_jobDetails"
         if job_details_key not in self.adata.uns:
             logger.info(
@@ -445,84 +333,17 @@ class CyteType:
 
         job_details = self.adata.uns[job_details_key]
         job_id = job_details.get("job_id")
-        api_url = job_details.get("api_url", DEFAULT_API_URL)
-        auth_token = job_details.get("auth_token")
 
         if not job_id:
             logger.error("Job details found but missing job_id.")
             return None
 
-        logger.info(
-            f"No results found locally. Attempting to retrieve results for job_id: {job_id}"
+        return fetch_remote_results(
+            self.adata,
+            job_id,
+            self.api_url,
+            self.auth_token,
+            results_prefix,
+            self.group_key,
+            self.clusters,
         )
-
-        try:
-            # Use the client function to check job status
-            api_url = api_url.rstrip("/")
-            status_response = check_job_status(job_id, api_url, auth_token)
-
-            status = status_response["status"]
-
-            if status == "completed":
-                result_data = status_response["result"]
-
-                # Ensure we have a proper dict result instead of Any
-                if not isinstance(result_data, dict):
-                    logger.error(
-                        f"Expected dict result from API, got {type(result_data)}"
-                    )
-                    return None
-
-                # Store the retrieved results locally
-                self.adata.uns[results_key] = {
-                    "job_id": job_id,
-                    "result": json.dumps(result_data),
-                }
-
-                # Update annotations
-                self._store_results_and_annotations(
-                    result_data,
-                    job_id,
-                    results_prefix,
-                    check_unannotated=False,
-                )
-
-                return result_data
-
-            elif status == "failed":
-                logger.error(f"Job {job_id} failed: {status_response['message']}")
-                return None
-
-            elif status in ["processing", "pending"]:
-                logger.info(
-                    f"Job {job_id} is still {status}. Results not yet available."
-                )
-
-                # Create report URL with auth token if available
-                stored_auth_token = job_details.get("auth_token")
-                if stored_auth_token:
-                    report_url_with_auth = (
-                        f"{api_url}/report/{job_id}?token={stored_auth_token}"
-                    )
-                    logger.info(f"Check progress at: {report_url_with_auth}")
-                    logger.warning(
-                        "⚠️  Note: The report URL contains your auth token - don't share it publicly!"
-                    )
-                else:
-                    logger.info(
-                        f"Check progress at: {job_details.get('report_url', 'N/A')}"
-                    )
-
-                return None
-
-            elif status == "not_found":
-                logger.info(f"Job {job_id} results not yet available (404).")
-                return None
-
-            else:
-                logger.warning(f"Job {job_id} has unknown status: '{status}'.")
-                return None
-
-        except Exception as e:
-            logger.error(f"Failed to retrieve results for job {job_id}: {e}")
-            return None
