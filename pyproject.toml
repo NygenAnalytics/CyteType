@@ -5,13 +5,15 @@ description = "Python client for characterization of clusters from single-cell R
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "anndata~=0.12.7",
+    "anndata~=0.12.10",
     "loguru~=0.7.3",
     "natsort~=8.4.0",
     "requests~=2.32.5",
     "pydantic~=2.12.5",
     "session-info~=1.0.1",
     "python-dotenv~=1.2.1",
+    "duckdb>=1.4.4",
+    "hdf5plugin>=6.0.0",
 ]
 authors = [
     {name = "Parashar Dhapola", email = "parashar@nygen.io"}
@@ -26,11 +28,11 @@ Repository = "https://github.com/NygenAnalytics/cytetype"
 
 [dependency-groups]
 dev = [
-    "jupyterlab~=4.4.6",
+    "jupyterlab~=4.5.4",
     "mypy~=1.19.1",
     "pytest~=9.0.2",
     "ruff~=0.14.11",
-    "scanpy~=1.11.5",
+    "scanpy~=1.12",
     "igraph~=1.0.0",
     "leidenalg~=0.11.0",
     "types-requests~=2.32.4.20260107",

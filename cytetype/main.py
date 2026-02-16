@@ -1,10 +1,16 @@
+from pathlib import Path
 from typing import Any
+from importlib.metadata import PackageNotFoundError, version
 
 import anndata
 from natsort import natsorted
 
 from .config import logger
 from .api import submit_annotation_job, wait_for_completion
+from .api.client import (
+    upload_obs_duckdb as upload_obs_duckdb_file,
+    upload_vars_h5 as upload_vars_h5_file,
+)
 from .preprocessing import (
     validate_adata,
     aggregate_expression_percentages,
@@ -13,6 +19,10 @@ from .preprocessing import (
     extract_visualization_coordinates,
 )
 from .core.payload import build_annotation_payload, save_query_to_file
+from .core.artifacts import (
+    save_features_matrix,
+    save_obs_duckdb as save_obs_duckdb_file,
+)
 from .core.results import (
     store_job_details,
     store_annotations,
@@ -21,6 +31,13 @@ from .core.results import (
 )
 
 __all__ = ["CyteType"]
+
+
+def _get_cytetype_version() -> str | None:
+    try:
+        return version("cytetype")
+    except PackageNotFoundError:
+        return None
 
 
 class CyteType:
@@ -46,6 +63,7 @@ class CyteType:
     marker_genes: dict[str, list[str]]
     group_metadata: dict[str, dict[str, dict[str, int]]]
     visualization_data: dict[str, Any]
+    __version__: str | None = _get_cytetype_version()
 
     def __init__(
         self,
@@ -175,6 +193,62 @@ class CyteType:
 
         logger.info("Data preparation completed. Ready for submitting jobs.")
 
+    def _build_and_upload_artifacts(
+        self,
+        vars_h5_path: str,
+        obs_duckdb_path: str,
+        upload_timeout_seconds: int,
+    ) -> dict[str, str]:
+        """Build local artifacts and upload them before annotate."""
+        logger.info("Saving vars.h5 artifact from normalized counts...")
+        save_features_matrix(
+            out_file=vars_h5_path,
+            mat=self.adata.X,
+        )
+
+        logger.info("Saving obs.duckdb artifact from observation metadata...")
+        save_obs_duckdb_file(
+            out_file=obs_duckdb_path,
+            obs_df=self.adata.obs,
+        )
+
+        logger.info("Uploading obs.duckdb artifact...")
+        obs_upload = upload_obs_duckdb_file(
+            self.api_url,
+            self.auth_token,
+            obs_duckdb_path,
+            timeout=(30.0, float(upload_timeout_seconds)),
+        )
+        if obs_upload.file_kind != "obs_duckdb":
+            raise ValueError(
+                f"Unexpected upload file_kind for obs artifact: {obs_upload.file_kind}"
+            )
+
+        logger.info("Uploading vars.h5 artifact...")
+        vars_upload = upload_vars_h5_file(
+            self.api_url,
+            self.auth_token,
+            vars_h5_path,
+            timeout=(30.0, float(upload_timeout_seconds)),
+        )
+        if vars_upload.file_kind != "vars_h5":
+            raise ValueError(
+                f"Unexpected upload file_kind for vars artifact: {vars_upload.file_kind}"
+            )
+
+        return {
+            "obs_duckdb": obs_upload.upload_id,
+            "vars_h5": vars_upload.upload_id,
+        }
+
+    @staticmethod
+    def _cleanup_artifact_files(paths: list[str]) -> None:
+        for artifact_path in paths:
+            try:
+                Path(artifact_path).unlink(missing_ok=True)
+            except OSError as exc:
+                logger.warning(f"Failed to cleanup artifact {artifact_path}: {exc}")
+
     def run(
         self,
         study_context: str,
@@ -188,6 +262,10 @@ class CyteType:
         auth_token: str | None = None,
         save_query: bool = True,
         query_filename: str = "query.json",
+        vars_h5_path: str = "vars.h5",
+        obs_duckdb_path: str = "obs.duckdb",
+        upload_timeout_seconds: int = 3600,
+        cleanup_artifacts: bool = False,
         show_progress: bool = True,
         override_existing_results: bool = False,
     ) -> anndata.AnnData:
@@ -222,6 +300,14 @@ class CyteType:
             save_query (bool, optional): Whether to save the query to a file. Defaults to True.
             query_filename (str, optional): Filename for saving the query when save_query is True.
                 Defaults to "query.json".
+            vars_h5_path (str, optional): Local output path for generated vars.h5 artifact.
+                Defaults to "vars.h5".
+            obs_duckdb_path (str, optional): Local output path for generated obs.duckdb artifact.
+                Defaults to "obs.duckdb".
+            upload_timeout_seconds (int, optional): Socket read timeout used for each artifact upload.
+                Defaults to 3600.
+            cleanup_artifacts (bool, optional): Whether to delete generated artifact files after run
+                completes or fails. Defaults to False.
             show_progress (bool, optional): Whether to display progress updates with spinner and
                 cluster status. Set to False to disable all visual progress output. Defaults to True.
             override_existing_results (bool, optional): Whether to override existing results with the
@@ -256,8 +342,10 @@ class CyteType:
             self.api_url = api_url.strip("/")
         if auth_token:
             self.auth_token = auth_token
+        if upload_timeout_seconds <= 0:
+            raise ValueError("upload_timeout_seconds must be greater than 0")
 
-        # Build and validate payload
+        # Validate the base payload before doing potentially expensive uploads.
         payload = build_annotation_payload(
             study_context,
             metadata,
@@ -270,36 +358,48 @@ class CyteType:
             llm_configs,
         )
 
-        # Save query if requested
-        if save_query:
-            save_query_to_file(payload["input_data"], query_filename)
+        artifact_paths = [vars_h5_path, obs_duckdb_path]
+        try:
+            uploaded_file_refs = self._build_and_upload_artifacts(
+                vars_h5_path=vars_h5_path,
+                obs_duckdb_path=obs_duckdb_path,
+                upload_timeout_seconds=upload_timeout_seconds,
+            )
+            payload["uploaded_files"] = uploaded_file_refs
 
-        # Submit job and store details
-        job_id = submit_annotation_job(self.api_url, self.auth_token, payload)
-        store_job_details(self.adata, job_id, self.api_url, results_prefix)
+            # Save query if requested
+            if save_query:
+                save_query_to_file(payload["input_data"], query_filename)
 
-        # Wait for completion
-        result = wait_for_completion(
-            self.api_url,
-            self.auth_token,
-            job_id,
-            poll_interval_seconds,
-            timeout_seconds,
-            show_progress,
-        )
+            # Submit job and store details
+            job_id = submit_annotation_job(self.api_url, self.auth_token, payload)
+            store_job_details(self.adata, job_id, self.api_url, results_prefix)
 
-        # Store results
-        store_annotations(
-            self.adata,
-            result,
-            job_id,
-            results_prefix,
-            self.group_key,
-            self.clusters,
-            check_unannotated=True,
-        )
+            # Wait for completion
+            result = wait_for_completion(
+                self.api_url,
+                self.auth_token,
+                job_id,
+                poll_interval_seconds,
+                timeout_seconds,
+                show_progress,
+            )
 
-        return self.adata
+            # Store results
+            store_annotations(
+                self.adata,
+                result,
+                job_id,
+                results_prefix,
+                self.group_key,
+                self.clusters,
+                check_unannotated=True,
+            )
+
+            return self.adata
+        finally:
+            if cleanup_artifacts:
+                self._cleanup_artifact_files(artifact_paths)
 
     def get_results(
         self,

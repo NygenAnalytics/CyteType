@@ -1,6 +1,7 @@
 """Integration tests for CyteType class."""
 
 import pytest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 from pydantic import ValidationError
 from typing import Any
@@ -8,6 +9,7 @@ import anndata
 
 from cytetype import CyteType
 from cytetype.api.exceptions import RateLimitError, AuthenticationError
+from cytetype.api import UploadResponse
 
 
 def test_fixture_works(mock_adata: anndata.AnnData) -> None:
@@ -41,6 +43,40 @@ def test_cytetype_initialization(mock_adata: anndata.AnnData) -> None:
     assert ct.visualization_data["coordinates"] is not None
 
 
+@pytest.fixture(autouse=True)
+def mock_internal_artifact_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Avoid file and network work for run() in tests by mocking internals."""
+
+    def _save_vars(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    def _save_obs(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    def _upload_obs(*args: Any, **kwargs: Any) -> UploadResponse:
+        return UploadResponse(
+            upload_id="obs_upload_123",
+            file_kind="obs_duckdb",
+            file_name="obs.duckdb",
+            size_bytes=100,
+            expires_at="2099-01-01T00:00:00Z",
+        )
+
+    def _upload_vars(*args: Any, **kwargs: Any) -> UploadResponse:
+        return UploadResponse(
+            upload_id="vars_upload_456",
+            file_kind="vars_h5",
+            file_name="vars.h5",
+            size_bytes=100,
+            expires_at="2099-01-01T00:00:00Z",
+        )
+
+    monkeypatch.setattr("cytetype.main.save_features_matrix", _save_vars)
+    monkeypatch.setattr("cytetype.main.save_obs_duckdb_file", _save_obs)
+    monkeypatch.setattr("cytetype.main.upload_obs_duckdb_file", _upload_obs)
+    monkeypatch.setattr("cytetype.main.upload_vars_h5_file", _upload_vars)
+
+
 @patch("cytetype.main.wait_for_completion")
 @patch("cytetype.main.submit_annotation_job")
 def test_cytetype_run_success(
@@ -61,6 +97,11 @@ def test_cytetype_run_success(
     # Verify API calls made
     mock_submit.assert_called_once()
     mock_wait.assert_called_once()
+    payload = mock_submit.call_args.args[2]
+    assert payload["uploaded_files"] == {
+        "obs_duckdb": "obs_upload_123",
+        "vars_h5": "vars_upload_456",
+    }
 
     # Verify result is the modified adata
     assert result_adata is mock_adata
@@ -83,6 +124,67 @@ def test_cytetype_run_success(
     assert "cytetype_results" in result_adata.uns
     assert "cytetype_jobDetails" in result_adata.uns
     assert result_adata.uns["cytetype_jobDetails"]["job_id"] == "test_job_123"
+
+
+@patch("cytetype.main.wait_for_completion")
+@patch("cytetype.main.submit_annotation_job")
+def test_cytetype_run_auto_uploads_artifacts(
+    mock_submit: MagicMock,
+    mock_wait: MagicMock,
+    mock_adata: anndata.AnnData,
+    mock_api_response: dict[str, Any],
+) -> None:
+    """Test run() auto-creates upload references in /annotate payload."""
+    mock_submit.return_value = "job_with_uploads"
+    mock_wait.return_value = mock_api_response
+
+    ct = CyteType(mock_adata, group_key="leiden")
+    ct.run(study_context="Test")
+
+    call_args = mock_submit.call_args.args
+    payload = call_args[2]
+    assert payload["uploaded_files"] == {
+        "obs_duckdb": "obs_upload_123",
+        "vars_h5": "vars_upload_456",
+    }
+
+
+@patch("cytetype.main.wait_for_completion")
+@patch("cytetype.main.submit_annotation_job")
+def test_cytetype_run_cleanup_artifacts(
+    mock_submit: MagicMock,
+    mock_wait: MagicMock,
+    mock_adata: anndata.AnnData,
+    mock_api_response: dict[str, Any],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test run() can cleanup generated artifact files when requested."""
+    mock_submit.return_value = "job_cleanup"
+    mock_wait.return_value = mock_api_response
+
+    vars_path = tmp_path / "vars.h5"
+    obs_path = tmp_path / "obs.duckdb"
+
+    def _save_vars(*args: Any, **kwargs: Any) -> None:
+        Path(kwargs["out_file"]).write_bytes(b"vars")
+
+    def _save_obs(*args: Any, **kwargs: Any) -> None:
+        Path(kwargs["out_file"]).write_bytes(b"obs")
+
+    monkeypatch.setattr("cytetype.main.save_features_matrix", _save_vars)
+    monkeypatch.setattr("cytetype.main.save_obs_duckdb_file", _save_obs)
+
+    ct = CyteType(mock_adata, group_key="leiden")
+    ct.run(
+        study_context="Test",
+        vars_h5_path=str(vars_path),
+        obs_duckdb_path=str(obs_path),
+        cleanup_artifacts=True,
+    )
+
+    assert not vars_path.exists()
+    assert not obs_path.exists()
 
 
 @patch("cytetype.main.wait_for_completion")

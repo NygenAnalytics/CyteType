@@ -1,5 +1,5 @@
 import requests
-from typing import Any
+from typing import Any, BinaryIO
 
 from .exceptions import create_api_exception, NetworkError, TimeoutError
 from .schemas import ErrorResponse
@@ -13,13 +13,13 @@ class HTTPTransport:
         self.auth_token = auth_token
         self.session = requests.Session()
 
-    def _build_headers(self, content_type: bool = False) -> dict[str, str]:
+    def _build_headers(self, content_type: str | None = None) -> dict[str, str]:
         """Build request headers with auth token."""
         headers = {}
         if self.auth_token:
             headers["Authorization"] = f"Bearer {self.auth_token}"
         if content_type:
-            headers["Content-Type"] = "application/json"
+            headers["Content-Type"] = content_type
         return headers
 
     def _parse_error(self, response: requests.Response) -> None:
@@ -61,7 +61,33 @@ class HTTPTransport:
             response = self.session.post(
                 url,
                 json=data,
-                headers=self._build_headers(content_type=True),
+                headers=self._build_headers(content_type="application/json"),
+                timeout=timeout,
+            )
+
+            if not response.ok:
+                self._parse_error(response)
+
+            return response.status_code, response.json()
+
+        except requests.RequestException as e:
+            self._handle_request_error(e)
+            raise  # For type checker
+
+    def post_binary(
+        self,
+        endpoint: str,
+        data: bytes | BinaryIO,
+        timeout: float | tuple[float, float] = (30.0, 3600.0),
+    ) -> tuple[int, dict[str, Any]]:
+        """Make POST request with raw binary body (application/octet-stream)."""
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+
+        try:
+            response = self.session.post(
+                url,
+                data=data,
+                headers=self._build_headers(content_type="application/octet-stream"),
                 timeout=timeout,
             )
 

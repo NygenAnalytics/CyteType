@@ -1,5 +1,13 @@
-from typing import Any, TypeAlias, Literal
+from importlib.metadata import PackageNotFoundError, version
+from typing import Any, Literal, TypeAlias
 from pydantic import BaseModel, Field, model_validator
+
+
+def _get_client_version() -> str | None:
+    try:
+        return version("cytetype")
+    except PackageNotFoundError:
+        return None
 
 
 LLMProvider: TypeAlias = Literal[
@@ -18,6 +26,7 @@ LLMProvider: TypeAlias = Literal[
 AgentType: TypeAlias = Literal[
     "contextualizer", "annotator", "reviewer", "summarizer", "clinician", "chat"
 ]
+UploadFileKind: TypeAlias = Literal["obs_duckdb", "vars_h5"]
 
 
 class LLMModelConfig(BaseModel):
@@ -64,6 +73,16 @@ class LLMModelConfig(BaseModel):
         raise ValueError("Either apiKey or all AWS credentials must be provided")
 
 
+class ClientInfo(BaseModel):
+    clientType: Literal["anndata"] = Field(
+        default="anndata", description="The type of client that is using the API"
+    )
+    clientVersion: str | None = Field(
+        default_factory=_get_client_version,
+        description="The version of the client that is using the API",
+    )
+
+
 class InputData(BaseModel):
     studyInfo: str = Field(
         default="",
@@ -98,6 +117,10 @@ class InputData(BaseModel):
         ge=1,
         le=50,
         description="Number of parallel requests to make to the model",
+    )
+    clientInfo: ClientInfo = Field(
+        default_factory=ClientInfo,
+        description="Client information",
     )
 
     @classmethod
@@ -169,6 +192,31 @@ class InputData(BaseModel):
             },
             nParallelClusters=5,
         )
+
+
+class UploadedFiles(BaseModel):
+    obs_duckdb: str | None = None
+    vars_h5: str | None = None
+
+    @model_validator(mode="after")
+    def validate_at_least_one_reference(self) -> "UploadedFiles":
+        if self.obs_duckdb is None and self.vars_h5 is None:
+            raise ValueError("At least one uploaded file reference must be provided")
+        return self
+
+
+class AnnotateRequest(BaseModel):
+    input_data: InputData
+    llm_configs: list[LLMModelConfig] | None = None
+    uploaded_files: UploadedFiles | None = None
+
+
+class UploadResponse(BaseModel):
+    upload_id: str
+    file_kind: UploadFileKind
+    file_name: str
+    size_bytes: int
+    expires_at: str
 
 
 # New schemas for API responses

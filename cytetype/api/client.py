@@ -1,10 +1,66 @@
 import time
+from pathlib import Path
 from typing import Any
 
 from .transport import HTTPTransport
 from .progress import ProgressDisplay
 from .exceptions import JobFailedError, TimeoutError, APIError
+from .schemas import UploadResponse, UploadFileKind
 from ..config import logger
+
+
+MAX_UPLOAD_BYTES: dict[UploadFileKind, int] = {
+    "obs_duckdb": 100 * 1024 * 1024,  # 100MB
+    "vars_h5": 10 * 1024 * 1024 * 1024,  # 10GB
+}
+
+
+def _upload_file(
+    base_url: str,
+    auth_token: str | None,
+    file_kind: UploadFileKind,
+    file_path: str,
+    timeout: float | tuple[float, float] = (30.0, 3600.0),
+) -> UploadResponse:
+    path_obj = Path(file_path)
+    if not path_obj.is_file():
+        raise FileNotFoundError(f"Upload file not found: {path_obj}")
+
+    size_bytes = path_obj.stat().st_size
+    max_size = MAX_UPLOAD_BYTES[file_kind]
+    if size_bytes > max_size:
+        raise ValueError(
+            f"{file_kind} exceeds upload limit: {size_bytes} bytes > {max_size} bytes"
+        )
+
+    transport = HTTPTransport(base_url, auth_token)
+    with path_obj.open("rb") as f:
+        _, response = transport.post_binary(
+            f"upload/{file_kind}",
+            data=f,
+            timeout=timeout,
+        )
+    return UploadResponse(**response)
+
+
+def upload_obs_duckdb(
+    base_url: str,
+    auth_token: str | None,
+    file_path: str,
+    timeout: float | tuple[float, float] = (30.0, 3600.0),
+) -> UploadResponse:
+    """Upload obs duckdb file and return upload metadata."""
+    return _upload_file(base_url, auth_token, "obs_duckdb", file_path, timeout=timeout)
+
+
+def upload_vars_h5(
+    base_url: str,
+    auth_token: str | None,
+    file_path: str,
+    timeout: float | tuple[float, float] = (30.0, 3600.0),
+) -> UploadResponse:
+    """Upload vars h5 file and return upload metadata."""
+    return _upload_file(base_url, auth_token, "vars_h5", file_path, timeout=timeout)
 
 
 def submit_annotation_job(
