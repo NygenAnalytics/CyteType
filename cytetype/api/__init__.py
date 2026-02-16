@@ -6,7 +6,14 @@ from .client import (
     fetch_job_results,
     wait_for_completion,
 )
-from .schemas import LLMModelConfig, InputData
+from .schemas import (
+    LLMModelConfig,
+    InputData,
+    AnnotateRequest,
+    UploadResponse,
+    UploadedFiles,
+    UploadFileKind,
+)
 from .exceptions import (
     CyteTypeError,
     APIError,
@@ -29,6 +36,10 @@ __all__ = [
     # Schemas
     "LLMModelConfig",
     "InputData",
+    "AnnotateRequest",
+    "UploadResponse",
+    "UploadedFiles",
+    "UploadFileKind",
     # Exceptions
     "CyteTypeError",
     "APIError",

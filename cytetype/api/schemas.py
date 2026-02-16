@@ -1,4 +1,4 @@
-from typing import Any, TypeAlias, Literal
+from typing import Any, Literal, TypeAlias
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -18,6 +18,7 @@ LLMProvider: TypeAlias = Literal[
 AgentType: TypeAlias = Literal[
     "contextualizer", "annotator", "reviewer", "summarizer", "clinician", "chat"
 ]
+UploadFileKind: TypeAlias = Literal["obs_duckdb", "vars_h5"]
 
 
 class LLMModelConfig(BaseModel):
@@ -169,6 +170,31 @@ class InputData(BaseModel):
             },
             nParallelClusters=5,
         )
+
+
+class UploadedFiles(BaseModel):
+    obs_duckdb: str | None = None
+    vars_h5: str | None = None
+
+    @model_validator(mode="after")
+    def validate_at_least_one_reference(self) -> "UploadedFiles":
+        if self.obs_duckdb is None and self.vars_h5 is None:
+            raise ValueError("At least one uploaded file reference must be provided")
+        return self
+
+
+class AnnotateRequest(BaseModel):
+    input_data: InputData
+    llm_configs: list[LLMModelConfig] | None = None
+    uploaded_files: UploadedFiles | None = None
+
+
+class UploadResponse(BaseModel):
+    upload_id: str
+    file_kind: UploadFileKind
+    file_name: str
+    size_bytes: int
+    expires_at: str
 
 
 # New schemas for API responses
