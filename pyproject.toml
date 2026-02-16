@@ -49,9 +49,6 @@ packages = {find = {}}
 [tool.setuptools.dynamic]
 version = {attr = "cytetype.__version__"}
 
-[tool.uv]
-default-groups = ["dev"]
-
 [tool.mypy]
 strict = false
 
