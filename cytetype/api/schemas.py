@@ -83,7 +83,6 @@ class ClientInfo(BaseModel):
     )
 
 
-
 class InputData(BaseModel):
     studyInfo: str = Field(
         default="",
