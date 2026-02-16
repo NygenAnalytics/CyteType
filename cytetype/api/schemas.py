@@ -1,5 +1,13 @@
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Literal, TypeAlias
 from pydantic import BaseModel, Field, model_validator
+
+
+def _get_client_version() -> str | None:
+    try:
+        return version("cytetype")
+    except PackageNotFoundError:
+        return None
 
 
 LLMProvider: TypeAlias = Literal[
@@ -65,6 +73,17 @@ class LLMModelConfig(BaseModel):
         raise ValueError("Either apiKey or all AWS credentials must be provided")
 
 
+class ClientInfo(BaseModel):
+    clientType: Literal["anndata"] = Field(
+        default="anndata", description="The type of client that is using the API"
+    )
+    clientVersion: str | None = Field(
+        default_factory=_get_client_version,
+        description="The version of the client that is using the API",
+    )
+
+
+
 class InputData(BaseModel):
     studyInfo: str = Field(
         default="",
@@ -99,6 +118,10 @@ class InputData(BaseModel):
         ge=1,
         le=50,
         description="Number of parallel requests to make to the model",
+    )
+    clientInfo: ClientInfo = Field(
+        default_factory=ClientInfo,
+        description="Client information",
     )
 
     @classmethod

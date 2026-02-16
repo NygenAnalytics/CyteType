@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any
+from importlib.metadata import PackageNotFoundError, version
 
 import anndata
 from natsort import natsorted
@@ -32,6 +33,13 @@ from .core.results import (
 __all__ = ["CyteType"]
 
 
+def _get_cytetype_version() -> str | None:
+    try:
+        return version("cytetype")
+    except PackageNotFoundError:
+        return None
+
+
 class CyteType:
     """CyteType class for characterizing clusters from single-cell RNA-seq data.
 
@@ -55,6 +63,7 @@ class CyteType:
     marker_genes: dict[str, list[str]]
     group_metadata: dict[str, dict[str, dict[str, int]]]
     visualization_data: dict[str, Any]
+    __version__: str | None = _get_cytetype_version()
 
     def __init__(
         self,
