@@ -28,11 +28,11 @@ Repository = "https://github.com/NygenAnalytics/cytetype"
 
 [dependency-groups]
 dev = [
-    "jupyterlab~=4.4.6",
+    "jupyterlab~=4.5.4",
     "mypy~=1.19.1",
     "pytest~=9.0.2",
     "ruff~=0.14.11",
-    "scanpy~=1.11.5",
+    "scanpy~=1.12",
     "igraph~=1.0.0",
     "leidenalg~=0.11.0",
     "types-requests~=2.32.4.20260107",
@@ -48,6 +48,9 @@ packages = {find = {}}
 
 [tool.setuptools.dynamic]
 version = {attr = "cytetype.__version__"}
+
+[tool.uv]
+default-groups = ["dev"]
 
 [tool.mypy]
 strict = false
