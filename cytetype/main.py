@@ -204,6 +204,8 @@ class CyteType:
         save_features_matrix(
             out_file=vars_h5_path,
             mat=self.adata.X,
+            var_df=self.adata.var,
+            var_names=self.adata.var_names,
         )
 
         logger.info("Saving obs.duckdb artifact from observation metadata...")
