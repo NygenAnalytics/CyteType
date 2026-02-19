@@ -376,9 +376,11 @@ class CyteType:
             except Exception as exc:
                 if require_artifacts:
                     logger.error(
-                        "Artifact build/upload failed. Rerun with `require_artifacts=False` to skip this error.",
-                        "Please report the error below in a new issue at https://github.com/NygenAnalytics/CyteType",
-                        f"\n({type(exc).__name__}: {exc}). ",
+                        "Artifact build/upload failed. "
+                        "Rerun with `require_artifacts=False` to skip this error.\n"
+                        "Please report the error below in a new issue at "
+                        "https://github.com/NygenAnalytics/CyteType\n"
+                        f"({type(exc).__name__}: {exc})"
                     )
                     raise
                 logger.warning(

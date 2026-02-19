@@ -6,3 +6,4 @@
 - If you are using a custom LLM, make sure you have the correct API key and base URL.
 - For large datasets, load AnnData in backed mode (`sc.read_h5ad(..., backed="r")`) to reduce memory use during artifact generation.
 - `run()` creates `vars.h5` and `obs.duckdb` before annotation. Use `cleanup_artifacts=True` if you do not want to keep these local files.
+- If artifact building or uploading fails, `run()` will raise an error by default. Set `require_artifacts=False` to skip artifacts and continue with annotation only.

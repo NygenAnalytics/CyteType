@@ -80,10 +80,7 @@ sc.pl.umap(adata, color='cytetype_annotation_clusters')
 ```
 🚀 [Try it in Google Colab](https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsqRsh2N7?usp=sharing)
 
-> **Note:** No API keys required for default configuration. See [custom LLM configuration](docs/configuration.md#llm-configuration) for advanced options.
->
-> `run()` now handles artifact packaging and upload automatically (`vars.h5` + `obs.duckdb`) before annotation.
-> Generated artifact files are kept on disk by default; use `cleanup_artifacts=True` to remove them after run completion/failure.
+> **Note:** No API keys required for default configuration. See [Configuration](docs/configuration.md) for LLM setup, artifact handling, and advanced options.
 
 **Using R/Seurat?** → [CyteTypeR](https://github.com/NygenAnalytics/CyteTypeR)
 
