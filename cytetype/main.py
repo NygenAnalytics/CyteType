@@ -198,6 +198,7 @@ class CyteType:
         vars_h5_path: str,
         obs_duckdb_path: str,
         upload_timeout_seconds: int,
+        upload_max_workers: int = 4,
     ) -> dict[str, str]:
         """Build local artifacts and upload them before annotate."""
         logger.info("Saving vars.h5 artifact from normalized counts...")
@@ -220,6 +221,7 @@ class CyteType:
             self.auth_token,
             obs_duckdb_path,
             timeout=(30.0, float(upload_timeout_seconds)),
+            max_workers=upload_max_workers,
         )
         if obs_upload.file_kind != "obs_duckdb":
             raise ValueError(
@@ -232,6 +234,7 @@ class CyteType:
             self.auth_token,
             vars_h5_path,
             timeout=(30.0, float(upload_timeout_seconds)),
+            max_workers=upload_max_workers,
         )
         if vars_upload.file_kind != "vars_h5":
             raise ValueError(
@@ -267,6 +270,7 @@ class CyteType:
         vars_h5_path: str = "vars.h5",
         obs_duckdb_path: str = "obs.duckdb",
         upload_timeout_seconds: int = 3600,
+        upload_max_workers: int = 4,
         cleanup_artifacts: bool = False,
         require_artifacts: bool = True,
         show_progress: bool = True,
@@ -309,6 +313,8 @@ class CyteType:
                 Defaults to "obs.duckdb".
             upload_timeout_seconds (int, optional): Socket read timeout used for each artifact upload.
                 Defaults to 3600.
+            upload_max_workers (int, optional): Number of parallel threads used to upload file
+                chunks. Each worker holds one chunk in memory (~100 MB). Defaults to 4.
             cleanup_artifacts (bool, optional): Whether to delete generated artifact files after run
                 completes or fails. Defaults to False.
             require_artifacts (bool, optional): Whether to raise an error if artifact building or
@@ -371,6 +377,7 @@ class CyteType:
                     vars_h5_path=vars_h5_path,
                     obs_duckdb_path=obs_duckdb_path,
                     upload_timeout_seconds=upload_timeout_seconds,
+                    upload_max_workers=upload_max_workers,
                 )
                 payload["uploaded_files"] = uploaded_file_refs
             except Exception as exc:

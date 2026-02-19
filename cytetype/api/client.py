@@ -1,6 +1,9 @@
+import math
 import time
+import threading
 from pathlib import Path
 from typing import Any
+from concurrent.futures import ThreadPoolExecutor
 
 from .transport import HTTPTransport
 from .progress import ProgressDisplay
@@ -21,6 +24,7 @@ def _upload_file(
     file_kind: UploadFileKind,
     file_path: str,
     timeout: float | tuple[float, float] = (30.0, 3600.0),
+    max_workers: int = 4,
 ) -> UploadResponse:
     path_obj = Path(file_path)
     if not path_obj.is_file():
@@ -34,13 +38,52 @@ def _upload_file(
         )
 
     transport = HTTPTransport(base_url, auth_token)
-    with path_obj.open("rb") as f:
-        _, response = transport.post_binary(
-            f"upload/{file_kind}",
-            data=f,
+
+    # Step 1 – Initiate chunked upload
+    _, init_data = transport.post_empty(f"upload/{file_kind}/initiate", timeout=timeout)
+    upload_id: str = init_data["upload_id"]
+    chunk_size: int = init_data["chunk_size_bytes"]
+
+    server_max = init_data.get("max_size_bytes")
+    if server_max is not None and size_bytes > server_max:
+        raise ValueError(
+            f"{file_kind} exceeds server upload limit: "
+            f"{size_bytes} bytes > {server_max} bytes"
+        )
+
+    n_chunks = math.ceil(size_bytes / chunk_size) if size_bytes > 0 else 0
+
+    # Step 2 – Upload chunks in parallel.
+    # Each worker thread gets its own HTTPTransport (and thus its own
+    # requests.Session / connection pool) for thread safety.
+    # Memory is bounded to ~max_workers × chunk_size because each thread
+    # reads its chunk on demand via seek+read.
+    _tls = threading.local()
+
+    def _upload_chunk(chunk_idx: int) -> None:
+        if not hasattr(_tls, "transport"):
+            _tls.transport = HTTPTransport(base_url, auth_token)
+        offset = chunk_idx * chunk_size
+        read_size = min(chunk_size, size_bytes - offset)
+        with path_obj.open("rb") as f:
+            f.seek(offset)
+            chunk_data = f.read(read_size)
+        _tls.transport.put_binary(
+            f"upload/{upload_id}/chunk/{chunk_idx}",
+            data=chunk_data,
             timeout=timeout,
         )
-    return UploadResponse(**response)
+
+    if n_chunks > 0:
+        effective_workers = min(max_workers, n_chunks)
+        with ThreadPoolExecutor(max_workers=effective_workers) as pool:
+            list(pool.map(_upload_chunk, range(n_chunks)))
+
+    # Step 3 – Complete upload (returns same UploadResponse shape as before)
+    _, complete_data = transport.post_empty(
+        f"upload/{upload_id}/complete", timeout=timeout
+    )
+    return UploadResponse(**complete_data)
 
 
 def upload_obs_duckdb(
@@ -48,9 +91,16 @@ def upload_obs_duckdb(
     auth_token: str | None,
     file_path: str,
     timeout: float | tuple[float, float] = (30.0, 3600.0),
+    max_workers: int = 4,
 ) -> UploadResponse:
-    """Upload obs duckdb file and return upload metadata."""
-    return _upload_file(base_url, auth_token, "obs_duckdb", file_path, timeout=timeout)
+    return _upload_file(
+        base_url,
+        auth_token,
+        "obs_duckdb",
+        file_path,
+        timeout=timeout,
+        max_workers=max_workers,
+    )
 
 
 def upload_vars_h5(
@@ -58,9 +108,16 @@ def upload_vars_h5(
     auth_token: str | None,
     file_path: str,
     timeout: float | tuple[float, float] = (30.0, 3600.0),
+    max_workers: int = 4,
 ) -> UploadResponse:
-    """Upload vars h5 file and return upload metadata."""
-    return _upload_file(base_url, auth_token, "vars_h5", file_path, timeout=timeout)
+    return _upload_file(
+        base_url,
+        auth_token,
+        "vars_h5",
+        file_path,
+        timeout=timeout,
+        max_workers=max_workers,
+    )
 
 
 def submit_annotation_job(
