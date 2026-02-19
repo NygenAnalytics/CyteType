@@ -74,17 +74,41 @@ class HTTPTransport:
             self._handle_request_error(e)
             raise  # For type checker
 
-    def post_binary(
+    def post_empty(
+        self,
+        endpoint: str,
+        timeout: float | tuple[float, float] = 30.0,
+    ) -> tuple[int, dict[str, Any]]:
+        """Make POST request with no body."""
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+
+        try:
+            response = self.session.post(
+                url,
+                headers=self._build_headers(),
+                timeout=timeout,
+            )
+
+            if not response.ok:
+                self._parse_error(response)
+
+            return response.status_code, response.json()
+
+        except requests.RequestException as e:
+            self._handle_request_error(e)
+            raise  # For type checker
+
+    def put_binary(
         self,
         endpoint: str,
         data: bytes | BinaryIO,
         timeout: float | tuple[float, float] = (30.0, 3600.0),
     ) -> tuple[int, dict[str, Any]]:
-        """Make POST request with raw binary body (application/octet-stream)."""
+        """Make PUT request with raw binary body (application/octet-stream)."""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
 
         try:
-            response = self.session.post(
+            response = self.session.put(
                 url,
                 data=data,
                 headers=self._build_headers(content_type="application/octet-stream"),
