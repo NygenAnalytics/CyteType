@@ -23,6 +23,7 @@ from .exceptions import (
     QuotaExceededError,
     JobNotFoundError,
     JobFailedError,
+    LLMValidationError,
     TimeoutError,
     NetworkError,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "QuotaExceededError",
     "JobNotFoundError",
     "JobFailedError",
+    "LLMValidationError",
     "TimeoutError",
     "NetworkError",
 ]
