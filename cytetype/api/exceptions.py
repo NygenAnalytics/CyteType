@@ -50,6 +50,12 @@ class JobFailedError(APIError):
     pass
 
 
+class LLMValidationError(APIError):
+    """LLM validation failed - LLM_VALIDATION_FAILED."""
+
+    pass
+
+
 # Client-side errors with default messages
 class TimeoutError(CyteTypeError):
     """Client-side timeout waiting for results."""
@@ -80,6 +86,7 @@ ERROR_CODE_TO_EXCEPTION = {
     "QUOTA_EXCEEDED": QuotaExceededError,
     "JOB_NOT_FOUND": JobNotFoundError,
     "JOB_FAILED": JobFailedError,
+    "LLM_VALIDATION_FAILED": LLMValidationError,
     "JOB_PROCESSING": APIError,  # Generic - expected during polling
     "JOB_NOT_COMPLETED": APIError,  # Generic
     "HTTP_ERROR": APIError,  # Generic

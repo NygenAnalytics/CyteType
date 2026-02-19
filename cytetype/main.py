@@ -268,6 +268,7 @@ class CyteType:
         obs_duckdb_path: str = "obs.duckdb",
         upload_timeout_seconds: int = 3600,
         cleanup_artifacts: bool = False,
+        require_artifacts: bool = True,
         show_progress: bool = True,
         override_existing_results: bool = False,
     ) -> anndata.AnnData:
@@ -310,6 +311,9 @@ class CyteType:
                 Defaults to 3600.
             cleanup_artifacts (bool, optional): Whether to delete generated artifact files after run
                 completes or fails. Defaults to False.
+            require_artifacts (bool, optional): Whether to raise an error if artifact building or
+                uploading fails. When True (default), any artifact failure stops the run. Set to
+                False to skip artifacts and continue with annotation only. Defaults to True.
             show_progress (bool, optional): Whether to display progress updates with spinner and
                 cluster status. Set to False to disable all visual progress output. Defaults to True.
             override_existing_results (bool, optional): Whether to override existing results with the
@@ -362,12 +366,27 @@ class CyteType:
 
         artifact_paths = [vars_h5_path, obs_duckdb_path]
         try:
-            uploaded_file_refs = self._build_and_upload_artifacts(
-                vars_h5_path=vars_h5_path,
-                obs_duckdb_path=obs_duckdb_path,
-                upload_timeout_seconds=upload_timeout_seconds,
-            )
-            payload["uploaded_files"] = uploaded_file_refs
+            try:
+                uploaded_file_refs = self._build_and_upload_artifacts(
+                    vars_h5_path=vars_h5_path,
+                    obs_duckdb_path=obs_duckdb_path,
+                    upload_timeout_seconds=upload_timeout_seconds,
+                )
+                payload["uploaded_files"] = uploaded_file_refs
+            except Exception as exc:
+                if require_artifacts:
+                    logger.error(
+                        "Artifact build/upload failed. "
+                        "Rerun with `require_artifacts=False` to skip this error.\n"
+                        "Please report the error below in a new issue at "
+                        "https://github.com/NygenAnalytics/CyteType\n"
+                        f"({type(exc).__name__}: {exc})"
+                    )
+                    raise
+                logger.warning(
+                    "Artifact build/upload failed. Continuing without artifacts. "
+                    "Set `require_artifacts=True` to see the full traceback."
+                )
 
             # Save query if requested
             if save_query:

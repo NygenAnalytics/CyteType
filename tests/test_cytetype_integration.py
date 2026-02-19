@@ -151,6 +151,59 @@ def test_cytetype_run_auto_uploads_artifacts(
 
 @patch("cytetype.main.wait_for_completion")
 @patch("cytetype.main.submit_annotation_job")
+def test_cytetype_run_artifact_failure_raises_by_default(
+    mock_submit: MagicMock,
+    mock_wait: MagicMock,
+    mock_adata: anndata.AnnData,
+    mock_api_response: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test run() raises when artifact build fails and require_artifacts=True (default)."""
+    mock_submit.return_value = "job_no_artifacts"
+    mock_wait.return_value = mock_api_response
+
+    monkeypatch.setattr(
+        "cytetype.main.save_features_matrix",
+        MagicMock(side_effect=RuntimeError("disk full")),
+    )
+
+    ct = CyteType(mock_adata, group_key="leiden")
+    with pytest.raises(RuntimeError, match="disk full"):
+        ct.run(study_context="Test")
+
+
+@patch("cytetype.main.wait_for_completion")
+@patch("cytetype.main.submit_annotation_job")
+def test_cytetype_run_artifact_failure_continues_when_not_required(
+    mock_submit: MagicMock,
+    mock_wait: MagicMock,
+    mock_adata: anndata.AnnData,
+    mock_api_response: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test run() proceeds without uploaded_files when require_artifacts=False."""
+    mock_submit.return_value = "job_no_artifacts"
+    mock_wait.return_value = mock_api_response
+
+    monkeypatch.setattr(
+        "cytetype.main.save_features_matrix",
+        MagicMock(side_effect=RuntimeError("disk full")),
+    )
+
+    ct = CyteType(mock_adata, group_key="leiden")
+    result = ct.run(study_context="Test", require_artifacts=False)
+
+    # Job should still complete successfully
+    assert result is not None
+    assert mock_submit.called
+
+    # Payload must not contain uploaded_files
+    payload = mock_submit.call_args.args[2]
+    assert "uploaded_files" not in payload
+
+
+@patch("cytetype.main.wait_for_completion")
+@patch("cytetype.main.submit_annotation_job")
 def test_cytetype_run_cleanup_artifacts(
     mock_submit: MagicMock,
     mock_wait: MagicMock,
