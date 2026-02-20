@@ -92,12 +92,12 @@ def store_annotations(
         _check_unannotated_clusters(result_data, clusters)
 
     # Log success
-    logger.success(
-        f"Annotations successfully added to `adata.obs['{results_prefix}_annotation_{group_key}']`\n"
-        f"Ontology terms added to `adata.obs['{results_prefix}_cellOntologyTerm_{group_key}']`\n"
-        f"Ontology term IDs added to `adata.obs['{results_prefix}_ontologyTermID_{group_key}']`\n"
-        f"Cell states added to `adata.obs['{results_prefix}_cellState_{group_key}']`\n"
-        f"Full results added to `adata.uns['{results_prefix}_results']`."
+    logger.info(
+        f"     Annotation labels → adata.obs['{results_prefix}_annotation_{group_key}']\n"
+        f"   Cell Ontology terms → adata.obs['{results_prefix}_cellOntologyTerm_{group_key}']\n"
+        f"Cell Ontology term IDs → adata.obs['{results_prefix}_ontologyTermID_{group_key}']\n"
+        f"           Cell states → adata.obs['{results_prefix}_cellState_{group_key}']\n"
+        f"          Full results → adata.uns['{results_prefix}_results']"
     )
 
 

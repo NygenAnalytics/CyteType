@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .transport import HTTPTransport
 from .progress import ProgressDisplay
-from .exceptions import JobFailedError, TimeoutError, APIError
+from .exceptions import JobFailedError, TimeoutError, APIError, NetworkError
 from .schemas import UploadResponse, UploadFileKind
 from ..config import logger
 
@@ -16,6 +16,9 @@ MAX_UPLOAD_BYTES: dict[UploadFileKind, int] = {
     "obs_duckdb": 100 * 1024 * 1024,  # 100MB
     "vars_h5": 10 * 1024 * 1024 * 1024,  # 10GB
 }
+
+_CHUNK_RETRY_DELAYS = (1, 5, 20)
+_RETRYABLE_API_ERROR_CODES = frozenset({"INTERNAL_ERROR", "HTTP_ERROR"})
 
 
 def _upload_file(
@@ -59,6 +62,8 @@ def _upload_file(
     # Memory is bounded to ~max_workers × chunk_size because each thread
     # reads its chunk on demand via seek+read.
     _tls = threading.local()
+    _progress_lock = threading.Lock()
+    _chunks_done = [0]
 
     def _upload_chunk(chunk_idx: int) -> None:
         if not hasattr(_tls, "transport"):
@@ -68,16 +73,57 @@ def _upload_file(
         with path_obj.open("rb") as f:
             f.seek(offset)
             chunk_data = f.read(read_size)
-        _tls.transport.put_binary(
-            f"upload/{upload_id}/chunk/{chunk_idx}",
-            data=chunk_data,
-            timeout=timeout,
-        )
+
+        last_exc: Exception | None = None
+        for attempt in range(1 + len(_CHUNK_RETRY_DELAYS)):
+            try:
+                _tls.transport.put_binary(
+                    f"upload/{upload_id}/chunk/{chunk_idx}",
+                    data=chunk_data,
+                    timeout=timeout,
+                )
+                with _progress_lock:
+                    _chunks_done[0] += 1
+                    done = _chunks_done[0]
+                pct = 100 * done / n_chunks
+                print(
+                    f"\r  Uploading: {done}/{n_chunks} chunks ({pct:.0f}%)",
+                    end="",
+                    flush=True,
+                )
+                return
+            except (NetworkError, TimeoutError) as exc:
+                last_exc = exc
+            except APIError as exc:
+                if exc.error_code in _RETRYABLE_API_ERROR_CODES:
+                    last_exc = exc
+                else:
+                    raise
+
+            if attempt < len(_CHUNK_RETRY_DELAYS):
+                delay = _CHUNK_RETRY_DELAYS[attempt]
+                logger.warning(
+                    "Chunk %d/%d upload failed (attempt %d/%d), retrying in %ds: %s",
+                    chunk_idx + 1,
+                    n_chunks,
+                    attempt + 1,
+                    1 + len(_CHUNK_RETRY_DELAYS),
+                    delay,
+                    last_exc,
+                )
+                time.sleep(delay)
+
+        raise last_exc  # type: ignore[misc]
 
     if n_chunks > 0:
         effective_workers = min(max_workers, n_chunks)
-        with ThreadPoolExecutor(max_workers=effective_workers) as pool:
-            list(pool.map(_upload_chunk, range(n_chunks)))
+        try:
+            with ThreadPoolExecutor(max_workers=effective_workers) as pool:
+                list(pool.map(_upload_chunk, range(n_chunks)))
+            print(f"\r  \033[92m✓\033[0m Uploaded {n_chunks}/{n_chunks} chunks (100%)")
+        except BaseException:
+            print()  # ensure newline on failure
+            raise
 
     # Step 3 – Complete upload (returns same UploadResponse shape as before)
     _, complete_data = transport.post_empty(
@@ -293,7 +339,7 @@ def wait_for_completion(
             if job_status == "completed":
                 if progress:
                     progress.finalize(cluster_status)
-                logger.info(f"Job {job_id} completed successfully.")
+                logger.success(f"Job {job_id} completed successfully.")
                 return fetch_job_results(base_url, auth_token, job_id)
 
             elif job_status == "failed":

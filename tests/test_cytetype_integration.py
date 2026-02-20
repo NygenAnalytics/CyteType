@@ -181,7 +181,10 @@ def test_cytetype_run_artifact_failure_continues_when_not_required(
     mock_api_response: dict[str, Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test run() proceeds without uploaded_files when require_artifacts=False."""
+    """Test run() proceeds with partial uploads when require_artifacts=False.
+
+    vars.h5 save fails but obs.duckdb still succeeds independently.
+    """
     mock_submit.return_value = "job_no_artifacts"
     mock_wait.return_value = mock_api_response
 
@@ -197,9 +200,9 @@ def test_cytetype_run_artifact_failure_continues_when_not_required(
     assert result is not None
     assert mock_submit.called
 
-    # Payload must not contain uploaded_files
+    # obs.duckdb should have succeeded independently
     payload = mock_submit.call_args.args[2]
-    assert "uploaded_files" not in payload
+    assert payload["uploaded_files"] == {"obs_duckdb": "obs_upload_123"}
 
 
 @patch("cytetype.main.wait_for_completion")
