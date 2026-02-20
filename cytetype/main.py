@@ -199,52 +199,69 @@ class CyteType:
         obs_duckdb_path: str,
         upload_timeout_seconds: int,
         upload_max_workers: int = 4,
-    ) -> dict[str, str]:
-        """Build local artifacts and upload them before annotate."""
-        logger.info("Saving vars.h5 artifact from normalized counts...")
-        save_features_matrix(
-            out_file=vars_h5_path,
-            mat=self.adata.X,
-            var_df=self.adata.var,
-            var_names=self.adata.var_names,
-        )
+    ) -> tuple[dict[str, str], list[tuple[str, Exception]]]:
+        """Build and upload each artifact as an independent unit.
 
-        logger.info("Saving obs.duckdb artifact from observation metadata...")
-        save_obs_duckdb_file(
-            out_file=obs_duckdb_path,
-            obs_df=self.adata.obs,
-        )
+        Returns (uploaded_ids, errors) so the caller can decide whether
+        partial success is acceptable.
+        """
+        uploaded: dict[str, str] = {}
+        errors: list[tuple[str, Exception]] = []
+        timeout = (30.0, float(upload_timeout_seconds))
 
-        logger.info("Uploading obs.duckdb artifact...")
-        obs_upload = upload_obs_duckdb_file(
-            self.api_url,
-            self.auth_token,
-            obs_duckdb_path,
-            timeout=(30.0, float(upload_timeout_seconds)),
-            max_workers=upload_max_workers,
-        )
-        if obs_upload.file_kind != "obs_duckdb":
-            raise ValueError(
-                f"Unexpected upload file_kind for obs artifact: {obs_upload.file_kind}"
+        # --- vars.h5 (save then upload) ---
+        try:
+            logger.info("Saving vars.h5 artifact from normalized counts...")
+            save_features_matrix(
+                out_file=vars_h5_path,
+                mat=self.adata.X,
+                var_df=self.adata.var,
+                var_names=self.adata.var_names,
             )
-
-        logger.info("Uploading vars.h5 artifact...")
-        vars_upload = upload_vars_h5_file(
-            self.api_url,
-            self.auth_token,
-            vars_h5_path,
-            timeout=(30.0, float(upload_timeout_seconds)),
-            max_workers=upload_max_workers,
-        )
-        if vars_upload.file_kind != "vars_h5":
-            raise ValueError(
-                f"Unexpected upload file_kind for vars artifact: {vars_upload.file_kind}"
+            logger.info("Uploading vars.h5 artifact...")
+            vars_upload = upload_vars_h5_file(
+                self.api_url,
+                self.auth_token,
+                vars_h5_path,
+                timeout=timeout,
+                max_workers=upload_max_workers,
             )
+            if vars_upload.file_kind != "vars_h5":
+                raise ValueError(
+                    f"Unexpected upload file_kind for vars artifact: {vars_upload.file_kind}"
+                )
+            uploaded["vars_h5"] = vars_upload.upload_id
+        except Exception as exc:
+            logger.warning(f"vars.h5 artifact failed: {exc}")
+            errors.append(("vars_h5", exc))
 
-        return {
-            "obs_duckdb": obs_upload.upload_id,
-            "vars_h5": vars_upload.upload_id,
-        }
+        print()
+
+        # --- obs.duckdb (save then upload) ---
+        try:
+            logger.info("Saving obs.duckdb artifact from observation metadata...")
+            save_obs_duckdb_file(
+                out_file=obs_duckdb_path,
+                obs_df=self.adata.obs,
+            )
+            logger.info("Uploading obs.duckdb artifact...")
+            obs_upload = upload_obs_duckdb_file(
+                self.api_url,
+                self.auth_token,
+                obs_duckdb_path,
+                timeout=timeout,
+                max_workers=upload_max_workers,
+            )
+            if obs_upload.file_kind != "obs_duckdb":
+                raise ValueError(
+                    f"Unexpected upload file_kind for obs artifact: {obs_upload.file_kind}"
+                )
+            uploaded["obs_duckdb"] = obs_upload.upload_id
+        except Exception as exc:
+            logger.warning(f"obs.duckdb artifact failed: {exc}")
+            errors.append(("obs_duckdb", exc))
+
+        return uploaded, errors
 
     @staticmethod
     def _cleanup_artifact_files(paths: list[str]) -> None:
@@ -372,26 +389,29 @@ class CyteType:
 
         artifact_paths = [vars_h5_path, obs_duckdb_path]
         try:
-            try:
-                uploaded_file_refs = self._build_and_upload_artifacts(
-                    vars_h5_path=vars_h5_path,
-                    obs_duckdb_path=obs_duckdb_path,
-                    upload_timeout_seconds=upload_timeout_seconds,
-                    upload_max_workers=upload_max_workers,
-                )
+            uploaded_file_refs, artifact_errors = self._build_and_upload_artifacts(
+                vars_h5_path=vars_h5_path,
+                obs_duckdb_path=obs_duckdb_path,
+                upload_timeout_seconds=upload_timeout_seconds,
+                upload_max_workers=upload_max_workers,
+            )
+            if uploaded_file_refs:
                 payload["uploaded_files"] = uploaded_file_refs
-            except Exception as exc:
+
+            if artifact_errors:
+                failed_names = ", ".join(name for name, _ in artifact_errors)
                 if require_artifacts:
                     logger.error(
-                        "Artifact build/upload failed. "
+                        f"Artifact build/upload failed for: {failed_names}. "
                         "Rerun with `require_artifacts=False` to skip this error.\n"
                         "Please report the error below in a new issue at "
                         "https://github.com/NygenAnalytics/CyteType\n"
-                        f"({type(exc).__name__}: {exc})"
+                        f"({type(artifact_errors[0][1]).__name__}: {str(artifact_errors[0][1]).strip()})"
                     )
-                    raise
+                    raise artifact_errors[0][1]
                 logger.warning(
-                    "Artifact build/upload failed. Continuing without artifacts. "
+                    f"Artifact build/upload failed for: {failed_names}. "
+                    "Continuing without those artifacts. "
                     "Set `require_artifacts=True` to see the full traceback."
                 )
 
@@ -400,6 +420,7 @@ class CyteType:
                 save_query_to_file(payload["input_data"], query_filename)
 
             # Submit job and store details
+            print()
             job_id = submit_annotation_job(self.api_url, self.auth_token, payload)
             store_job_details(self.adata, job_id, self.api_url, results_prefix)
 
