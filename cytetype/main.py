@@ -132,9 +132,14 @@ class CyteType:
             adata, group_key, rank_key, gene_symbols_column, coordinates_key
         )
 
+        # Use original labels as IDs if all are short (<=3 chars), otherwise enumerate
+        _unique_group_categories: list[str | int] = natsorted(
+            adata.obs[group_key].unique().tolist()
+        )
+        _short_ids = all(len(str(x)) <= 3 for x in _unique_group_categories)
         self.cluster_map = {
-            str(x): str(n + 1)
-            for n, x in enumerate(natsorted(adata.obs[group_key].unique().tolist()))
+            str(x): str(x) if _short_ids else str(n)
+            for n, x in enumerate(_unique_group_categories)
         }
         self.clusters = [
             self.cluster_map[str(x)] for x in adata.obs[group_key].values.tolist()
