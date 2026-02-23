@@ -199,6 +199,7 @@ class CyteType:
         obs_duckdb_path: str,
         upload_timeout_seconds: int,
         upload_max_workers: int = 4,
+        coordinates_key: str | None = None,
     ) -> tuple[dict[str, str], list[tuple[str, Exception]]]:
         """Build and upload each artifact as an independent unit.
 
@@ -240,9 +241,16 @@ class CyteType:
         # --- obs.duckdb (save then upload) ---
         try:
             logger.info("Saving obs.duckdb artifact from observation metadata...")
+            obsm_coordinates = (
+                self.adata.obsm[coordinates_key]
+                if coordinates_key and coordinates_key in self.adata.obsm
+                else None
+            )
             save_obs_duckdb_file(
                 out_file=obs_duckdb_path,
                 obs_df=self.adata.obs,
+                obsm_coordinates=obsm_coordinates,
+                coordinates_key=coordinates_key,
             )
             logger.info("Uploading obs.duckdb artifact...")
             obs_upload = upload_obs_duckdb_file(
@@ -394,6 +402,7 @@ class CyteType:
                 obs_duckdb_path=obs_duckdb_path,
                 upload_timeout_seconds=upload_timeout_seconds,
                 upload_max_workers=upload_max_workers,
+                coordinates_key=self.coordinates_key,
             )
             if uploaded_file_refs:
                 payload["uploaded_files"] = uploaded_file_refs
