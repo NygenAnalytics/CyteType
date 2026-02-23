@@ -132,9 +132,14 @@ class CyteType:
             adata, group_key, rank_key, gene_symbols_column, coordinates_key
         )
 
+        # Use original labels as IDs if all are short (<=3 chars), otherwise enumerate
+        _unique_group_categories: list[str | int] = natsorted(
+            adata.obs[group_key].unique().tolist()
+        )
+        _short_ids = all(len(str(x)) <= 3 for x in _unique_group_categories)
         self.cluster_map = {
-            str(x): str(n + 1)
-            for n, x in enumerate(natsorted(adata.obs[group_key].unique().tolist()))
+            str(x): str(x) if _short_ids else str(n)
+            for n, x in enumerate(_unique_group_categories)
         }
         self.clusters = [
             self.cluster_map[str(x)] for x in adata.obs[group_key].values.tolist()
@@ -199,6 +204,7 @@ class CyteType:
         obs_duckdb_path: str,
         upload_timeout_seconds: int,
         upload_max_workers: int = 4,
+        coordinates_key: str | None = None,
     ) -> tuple[dict[str, str], list[tuple[str, Exception]]]:
         """Build and upload each artifact as an independent unit.
 
@@ -240,9 +246,16 @@ class CyteType:
         # --- obs.duckdb (save then upload) ---
         try:
             logger.info("Saving obs.duckdb artifact from observation metadata...")
+            obsm_coordinates = (
+                self.adata.obsm[coordinates_key]
+                if coordinates_key and coordinates_key in self.adata.obsm
+                else None
+            )
             save_obs_duckdb_file(
                 out_file=obs_duckdb_path,
                 obs_df=self.adata.obs,
+                obsm_coordinates=obsm_coordinates,
+                coordinates_key=coordinates_key,
             )
             logger.info("Uploading obs.duckdb artifact...")
             obs_upload = upload_obs_duckdb_file(
@@ -394,6 +407,7 @@ class CyteType:
                 obs_duckdb_path=obs_duckdb_path,
                 upload_timeout_seconds=upload_timeout_seconds,
                 upload_max_workers=upload_max_workers,
+                coordinates_key=self.coordinates_key,
             )
             if uploaded_file_refs:
                 payload["uploaded_files"] = uploaded_file_refs

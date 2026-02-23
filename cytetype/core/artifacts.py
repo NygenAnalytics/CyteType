@@ -197,6 +197,8 @@ def save_features_matrix(
 def save_obs_duckdb(
     out_file: str,
     obs_df: pd.DataFrame,
+    obsm_coordinates: np.ndarray | None = None,
+    coordinates_key: str | None = None,
     table_name: str = "obs",
     threads: int = 4,
     memory_limit: str = "4GB",
@@ -207,6 +209,11 @@ def save_obs_duckdb(
         raise ValueError(
             "Invalid table_name. Use letters, numbers, and underscores only."
         )
+
+    if obsm_coordinates is not None and coordinates_key is not None:
+        obs_df = obs_df.copy()
+        obs_df[f"__vis_coordinates_{coordinates_key}_1"] = obsm_coordinates[:, 0]
+        obs_df[f"__vis_coordinates_{coordinates_key}_2"] = obsm_coordinates[:, 1]
 
     dd_config: dict[str, Any] = {
         "threads": threads,
