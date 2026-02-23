@@ -176,7 +176,7 @@ def submit_annotation_job(
     transport = HTTPTransport(base_url, auth_token)
 
     try:
-        status_code, response = transport.post("annotate", payload, timeout=60)
+        status_code, response = transport.post("annotate", payload, timeout=180)
         job_id = response.get("job_id")
 
         if not job_id:
