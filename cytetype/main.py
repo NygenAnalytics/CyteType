@@ -3,6 +3,7 @@ from typing import Any
 from importlib.metadata import PackageNotFoundError, version
 
 import anndata
+import numpy as np
 from natsort import natsorted
 
 from .config import logger
@@ -20,6 +21,7 @@ from .preprocessing import (
 )
 from .core.payload import build_annotation_payload, save_query_to_file
 from .core.artifacts import (
+    _is_integer_valued,
     save_features_matrix,
     save_obs_duckdb as save_obs_duckdb_file,
 )
@@ -198,6 +200,29 @@ class CyteType:
 
         logger.info("Data preparation completed. Ready for submitting jobs.")
 
+    def _resolve_raw_counts(
+        self,
+    ) -> "tuple[Any, np.ndarray | None] | None":
+        if "counts" in self.adata.layers:
+            mat = self.adata.layers["counts"]
+            if _is_integer_valued(mat):
+                return mat, None
+
+        if self.adata.raw is not None:
+            raw_mat = self.adata.raw.X
+            col_indices = self.adata.raw.var_names.get_indexer(self.adata.var_names)
+            if (col_indices == -1).any():
+                logger.warning(
+                    "Some var_names not found in adata.raw — skipping adata.raw.X as raw counts source."
+                )
+            elif _is_integer_valued(raw_mat):
+                return raw_mat, col_indices.astype(np.intp)
+
+        if _is_integer_valued(self.adata.X):
+            return self.adata.X, None
+
+        return None
+
     def _build_and_upload_artifacts(
         self,
         vars_h5_path: str,
@@ -218,11 +243,22 @@ class CyteType:
         # --- vars.h5 (save then upload) ---
         try:
             logger.info("Saving vars.h5 artifact from normalized counts...")
+            raw_result = self._resolve_raw_counts()
+            if raw_result is None:
+                logger.warning(
+                    "No integer raw counts found in adata.layers['counts'], "
+                    "adata.raw.X, or adata.X. Skipping raw counts in vars.h5."
+                )
+                raw_mat, raw_col_indices = None, None
+            else:
+                raw_mat, raw_col_indices = raw_result
             save_features_matrix(
                 out_file=vars_h5_path,
                 mat=self.adata.X,
                 var_df=self.adata.var,
                 var_names=self.adata.var_names,
+                raw_mat=raw_mat,
+                raw_col_indices=raw_col_indices,
             )
             logger.info("Uploading vars.h5 artifact...")
             vars_upload = upload_vars_h5_file(
