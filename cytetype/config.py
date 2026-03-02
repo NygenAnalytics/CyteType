@@ -24,3 +24,5 @@ logger.add(
     level="INFO",
     format=_log_format,
 )
+
+WRITE_MEM_BUDGET: int = 4 * 1024 * 1024 * 1024  # 4 GB

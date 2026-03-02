@@ -1,3 +1,4 @@
+import pytest
 import h5py
 import anndata
 import numpy as np
@@ -105,6 +106,77 @@ def test_save_features_matrix_raw_with_float_integers(
     with h5py.File(out_path, "r") as f:
         assert "raw" in f
         assert f["raw"]["data"].dtype == np.int32
+
+
+def test_save_features_matrix_backed_csr(tmp_path: Path) -> None:
+    n_obs, n_vars = 200, 80
+    rng = np.random.default_rng(42)
+    mat = sp.random(n_obs, n_vars, density=0.3, format="csr", random_state=rng)
+    mat.data = rng.standard_normal(mat.nnz).astype(np.float32)
+    reference_csc = mat.tocsc()
+
+    h5ad_path = tmp_path / "backed.h5ad"
+    adata = anndata.AnnData(X=mat)
+    adata.write_h5ad(h5ad_path)
+    del adata
+
+    backed = anndata.read_h5ad(h5ad_path, backed="r")
+    out_path = tmp_path / "vars.h5"
+    save_features_matrix(out_file=str(out_path), mat=backed.X)
+    backed.file.close()
+
+    with h5py.File(out_path, "r") as f:
+        grp = f["vars"]
+        assert grp.attrs["n_obs"] == n_obs
+        assert grp.attrs["n_vars"] == n_vars
+
+        h5_indices = grp["indices"][:]
+        h5_data = grp["data"][:]
+        h5_indptr = grp["indptr"][:]
+
+        assert h5_indices.dtype == np.int32
+        assert h5_data.dtype == np.float32
+        assert len(h5_indptr) == n_vars + 1
+        assert h5_indptr[0] == 0
+        assert h5_indptr[-1] == reference_csc.nnz
+
+        np.testing.assert_array_equal(h5_indptr, reference_csc.indptr)
+        np.testing.assert_array_equal(h5_indices, reference_csc.indices)
+        np.testing.assert_allclose(h5_data, reference_csc.data, rtol=1e-6)
+
+
+def test_save_features_matrix_backed_csr_multiple_groups(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import cytetype.config
+
+    monkeypatch.setattr(cytetype.config, "WRITE_MEM_BUDGET", 256)
+
+    n_obs, n_vars = 50, 30
+    rng = np.random.default_rng(7)
+    mat = sp.random(n_obs, n_vars, density=0.4, format="csr", random_state=rng)
+    mat.data = rng.standard_normal(mat.nnz).astype(np.float32)
+    reference_csc = mat.tocsc()
+
+    h5ad_path = tmp_path / "backed.h5ad"
+    adata = anndata.AnnData(X=mat)
+    adata.write_h5ad(h5ad_path)
+    del adata
+
+    backed = anndata.read_h5ad(h5ad_path, backed="r")
+    out_path = tmp_path / "vars.h5"
+    save_features_matrix(out_file=str(out_path), mat=backed.X)
+    backed.file.close()
+
+    with h5py.File(out_path, "r") as f:
+        grp = f["vars"]
+        h5_indptr = grp["indptr"][:]
+        h5_indices = grp["indices"][:]
+        h5_data = grp["data"][:]
+
+        np.testing.assert_array_equal(h5_indptr, reference_csc.indptr)
+        np.testing.assert_array_equal(h5_indices, reference_csc.indices)
+        np.testing.assert_allclose(h5_data, reference_csc.data, rtol=1e-6)
 
 
 def test_is_integer_valued_with_true_integers() -> None:

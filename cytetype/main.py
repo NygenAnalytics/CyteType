@@ -220,7 +220,6 @@ class CyteType:
 
         # Build vars.h5
         try:
-            logger.info("Saving vars.h5 artifact from normalized counts...")
             raw_mat, raw_col_indices = (
                 self._raw_counts_result
                 if self._raw_counts_result is not None
@@ -243,7 +242,7 @@ class CyteType:
 
         # Build obs.duckdb
         try:
-            logger.info("Writing obs.duckdb artifact from observation metadata...")
+            logger.info("Writing obs data to duckdb artifact...")
             obsm_coordinates = (
                 self.adata.obsm[self.coordinates_key]
                 if self.coordinates_key and self.coordinates_key in self.adata.obsm

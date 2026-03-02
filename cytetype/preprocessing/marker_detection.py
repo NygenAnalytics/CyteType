@@ -49,7 +49,7 @@ def _accumulate_group_stats(
         import warnings
 
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=FutureWarning)
+            warnings.simplefilter("ignore")
             from tqdm.auto import tqdm
 
         chunk_iter = tqdm(chunk_starts, desc=progress_desc, unit="chunk")
@@ -166,11 +166,6 @@ def rank_genes_groups_backed(
         return out
 
     # --- accumulate sufficient statistics in one pass ---
-    logger.info(
-        "Accumulating statistics over {} cells in chunks of {}...",
-        n_cells,
-        cell_batch_size,
-    )
     stats = _accumulate_group_stats(
         X,
         cell_group_indices,

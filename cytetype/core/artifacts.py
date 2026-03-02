@@ -11,7 +11,7 @@ from pandas.api import types as ptypes
 import scipy.sparse as sp
 from anndata.abc import CSCDataset, CSRDataset
 
-from ..config import logger
+from ..config import logger, WRITE_MEM_BUDGET
 
 
 def _safe_column_dataset_name(
@@ -176,7 +176,9 @@ def _write_raw_group(
             warnings.simplefilter("ignore", category=FutureWarning)
             from tqdm.auto import tqdm
 
-        batch_iter = tqdm(batch_starts, desc="Writing raw counts", unit="batch")
+        batch_iter = tqdm(
+            batch_starts, desc="Writing raw counts to H5 artifact", unit="batch"
+        )
     except ImportError:
         batch_iter = batch_starts
 
@@ -206,6 +208,202 @@ def _write_raw_group(
     group.create_dataset("indptr", data=np.asarray(indptr, dtype=np.int64))
 
 
+def _try_import_tqdm() -> type | None:
+    try:
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            from tqdm.auto import tqdm
+
+        return tqdm  # type: ignore[no-any-return]
+    except ImportError:
+        return None
+
+
+def _write_csc_via_row_batches(
+    group: h5py.Group,
+    mat: Any,
+    n_rows: int,
+    n_cols: int,
+    min_chunk_size: int,
+) -> None:
+    row_batch = max(1, int(100_000_000 / max(n_cols, 1)))
+    chunk_size = max(1, min(n_rows * 10, min_chunk_size))
+    tqdm = _try_import_tqdm()
+
+    # --- Pass 1: count nnz per column ---
+    col_counts = np.zeros(n_cols, dtype=np.int64)
+    row_starts = range(0, n_rows, row_batch)
+    pass1_iter = (
+        tqdm(row_starts, desc="Counting non-zeros in normalized matrix", unit="batch")
+        if tqdm is not None
+        else row_starts
+    )
+
+    for start in pass1_iter:
+        end = min(start + row_batch, n_rows)
+        chunk = mat[start:end]
+        csr = chunk.tocsr() if sp.issparse(chunk) else sp.csr_matrix(chunk)
+        col_counts += np.bincount(csr.indices, minlength=n_cols)
+
+    indptr = np.empty(n_cols + 1, dtype=np.int64)
+    indptr[0] = 0
+    np.cumsum(col_counts, out=indptr[1:])
+    total_nnz = int(indptr[-1])
+
+    d_indices = group.create_dataset(
+        "indices",
+        shape=(total_nnz,),
+        dtype=np.int32,
+        chunks=(chunk_size,) if total_nnz > 0 else None,
+        compression=hdf5plugin.LZ4() if total_nnz > 0 else None,
+    )
+    d_data = group.create_dataset(
+        "data",
+        shape=(total_nnz,),
+        dtype=np.float32,
+        chunks=(chunk_size,) if total_nnz > 0 else None,
+        compression=hdf5plugin.LZ4() if total_nnz > 0 else None,
+    )
+
+    # --- Pass 2+: column-group scatter ---
+    max_nnz_per_group = max(1, WRITE_MEM_BUDGET // 8)
+
+    c_start = 0
+    group_idx = 0
+    while c_start < n_cols:
+        cumulative = np.cumsum(col_counts[c_start:])
+        over_budget = np.searchsorted(cumulative, max_nnz_per_group, side="right")
+        c_end = c_start + max(1, int(over_budget))
+        c_end = min(c_end, n_cols)
+
+        group_nnz = int(indptr[c_end] - indptr[c_start])
+        if group_nnz == 0:
+            c_start = c_end
+            group_idx += 1
+            continue
+
+        grp_indices = np.empty(group_nnz, dtype=np.int32)
+        grp_data = np.empty(group_nnz, dtype=np.float32)
+
+        n_group_cols = c_end - c_start
+        cursors = (indptr[c_start:c_end] - indptr[c_start]).copy()
+
+        desc = (
+            f"Writing normalized counts (group {group_idx + 1})"
+            if c_end < n_cols or c_start > 0
+            else "Writing normalized counts to H5 artifact"
+        )
+        pass2_iter = (
+            tqdm(row_starts, desc=desc, unit="batch")
+            if tqdm is not None
+            else row_starts
+        )
+
+        for start in pass2_iter:
+            end = min(start + row_batch, n_rows)
+            chunk = mat[start:end]
+            csr = chunk.tocsr() if sp.issparse(chunk) else sp.csr_matrix(chunk)
+            csc = csr.tocsc()
+
+            local_start_ptr = csc.indptr[c_start]
+            local_end_ptr = csc.indptr[c_end]
+            if local_start_ptr == local_end_ptr:
+                continue
+
+            slice_indices = csc.indices[local_start_ptr:local_end_ptr] + start
+            slice_data = csc.data[local_start_ptr:local_end_ptr].astype(
+                np.float32, copy=False
+            )
+            slice_indptr = csc.indptr[c_start : c_end + 1] - local_start_ptr
+
+            chunk_col_counts = np.diff(slice_indptr)
+            col_ids = np.repeat(
+                np.arange(n_group_cols, dtype=np.int64), chunk_col_counts
+            )
+            bases = cursors[col_ids]
+            local_offsets = np.arange(len(slice_indices), dtype=np.int64) - np.repeat(
+                slice_indptr[:-1].astype(np.int64), chunk_col_counts
+            )
+            targets = bases + local_offsets
+
+            grp_indices[targets] = slice_indices
+            grp_data[targets] = slice_data
+            cursors += chunk_col_counts
+
+        hdf5_offset = int(indptr[c_start])
+        d_indices[hdf5_offset : hdf5_offset + group_nnz] = grp_indices
+        d_data[hdf5_offset : hdf5_offset + group_nnz] = grp_data
+
+        del grp_indices, grp_data
+        c_start = c_end
+        group_idx += 1
+
+    group.create_dataset("indptr", data=indptr)
+
+
+def _write_csc_via_col_batches(
+    group: h5py.Group,
+    mat: Any,
+    n_rows: int,
+    n_cols: int,
+    min_chunk_size: int,
+    col_batch: int | None,
+) -> None:
+    if col_batch is None:
+        col_batch = max(1, int(1_000_000_000 / max(n_rows, 1)))
+
+    chunk_size = max(1, min(n_rows * 10, min_chunk_size))
+
+    d_indices = group.create_dataset(
+        "indices",
+        shape=(0,),
+        maxshape=(n_rows * n_cols,),
+        chunks=(chunk_size,),
+        dtype=np.int32,
+        compression=hdf5plugin.LZ4(),
+    )
+    d_data = group.create_dataset(
+        "data",
+        shape=(0,),
+        maxshape=(n_rows * n_cols,),
+        chunks=(chunk_size,),
+        dtype=np.float32,
+        compression=hdf5plugin.LZ4(),
+    )
+
+    indptr: list[int] = [0]
+    col_starts = range(0, n_cols, col_batch)
+    tqdm = _try_import_tqdm()
+    col_iter = (
+        tqdm(col_starts, desc="Writing normalized counts", unit="batch")
+        if tqdm is not None
+        else col_starts
+    )
+
+    for start in col_iter:
+        end = min(start + col_batch, n_cols)
+        raw_chunk = mat[:, start:end]
+        chunk = (
+            raw_chunk.tocsc() if sp.issparse(raw_chunk) else sp.csc_matrix(raw_chunk)
+        )
+
+        old_size = d_indices.shape[0]
+        chunk_indices = chunk.indices.astype(np.int32, copy=False)
+        chunk_data = chunk.data.astype(np.float32, copy=False)
+
+        d_indices.resize(old_size + len(chunk_indices), axis=0)
+        d_indices[old_size : old_size + len(chunk_indices)] = chunk_indices
+
+        d_data.resize(old_size + len(chunk_data), axis=0)
+        d_data[old_size : old_size + len(chunk_data)] = chunk_data
+
+        indptr.extend((chunk.indptr[1:] + indptr[-1]).tolist())
+
+    group.create_dataset("indptr", data=np.asarray(indptr, dtype=np.int64))
+
+
 def save_features_matrix(
     out_file: str,
     mat: Any,
@@ -225,75 +423,25 @@ def save_features_matrix(
 
     n_rows, n_cols = mat.shape
 
+    use_row_batch_path = isinstance(mat, CSRDataset)
+
     if not isinstance(mat, (CSRDataset, CSCDataset)):
         logger.warning(
             "For large datasets, use AnnData backed mode (e.g. sc.read_h5ad(..., backed='r')) "
             "so `adata.X` is a backed sparse dataset and avoids loading the full matrix in memory.",
         )
 
-    if col_batch is None:
-        col_batch = max(1, int(1_000_000_000 / max(n_rows, 1)))
-
-    chunk_size = max(1, min(n_rows * 10, min_chunk_size))
     with h5py.File(out_file, "w") as f:
         group = f.create_group("vars")
         group.attrs["n_obs"] = n_rows
         group.attrs["n_vars"] = n_cols
 
-        d_indices = group.create_dataset(
-            "indices",
-            shape=(0,),
-            maxshape=(n_rows * n_cols,),
-            chunks=(chunk_size,),
-            dtype=np.int32,
-            compression=hdf5plugin.LZ4(),
-        )
-        d_data = group.create_dataset(
-            "data",
-            shape=(0,),
-            maxshape=(n_rows * n_cols,),
-            chunks=(chunk_size,),
-            dtype=np.float32,
-            compression=hdf5plugin.LZ4(),
-        )
-
-        indptr: list[int] = [0]
-        col_starts = range(0, n_cols, col_batch)
-        try:
-            import warnings
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", category=FutureWarning)
-                from tqdm.auto import tqdm
-
-            col_iter = tqdm(
-                col_starts, desc="Writing pivoted normalized counts", unit="batch"
+        if use_row_batch_path:
+            _write_csc_via_row_batches(group, mat, n_rows, n_cols, min_chunk_size)
+        else:
+            _write_csc_via_col_batches(
+                group, mat, n_rows, n_cols, min_chunk_size, col_batch
             )
-        except ImportError:
-            col_iter = col_starts
-
-        for start in col_iter:
-            end = min(start + col_batch, n_cols)
-            raw_chunk = mat[:, start:end]
-            chunk = (
-                raw_chunk.tocsc()
-                if sp.issparse(raw_chunk)
-                else sp.csc_matrix(raw_chunk)
-            )
-
-            old_size = d_indices.shape[0]
-            chunk_indices = chunk.indices.astype(np.int32, copy=False)
-            chunk_data = chunk.data.astype(np.float32, copy=False)
-
-            d_indices.resize(old_size + len(chunk_indices), axis=0)
-            d_indices[old_size : old_size + len(chunk_indices)] = chunk_indices
-
-            d_data.resize(old_size + len(chunk_data), axis=0)
-            d_data[old_size : old_size + len(chunk_data)] = chunk_data
-
-            indptr.extend((chunk.indptr[1:] + indptr[-1]).tolist())
-
-        group.create_dataset("indptr", data=np.asarray(indptr, dtype=np.int64))
 
         if var_df is not None:
             _write_var_metadata(
