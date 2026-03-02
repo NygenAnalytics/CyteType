@@ -332,13 +332,20 @@ class CyteType:
 
         return uploaded, errors
 
-    @staticmethod
-    def _cleanup_artifact_files(paths: list[str]) -> None:
-        for artifact_path in paths:
-            try:
-                Path(artifact_path).unlink(missing_ok=True)
-            except OSError as exc:
-                logger.warning(f"Failed to cleanup artifact {artifact_path}: {exc}")
+    def cleanup(self) -> None:
+        """Delete the artifact files built during initialization.
+
+        Call this after run() completes to remove the vars.h5 and obs.duckdb
+        files from disk. Paths are cleared so repeated calls are safe.
+        """
+        for attr, path in [("_vars_h5_path", self._vars_h5_path), ("_obs_duckdb_path", self._obs_duckdb_path)]:
+            if path is not None:
+                try:
+                    Path(path).unlink(missing_ok=True)
+                    logger.info(f"Deleted artifact file: {path}")
+                except OSError as exc:
+                    logger.warning(f"Failed to delete artifact {path}: {exc}")
+                setattr(self, attr, None)
 
     def run(
         self,
@@ -355,7 +362,6 @@ class CyteType:
         query_filename: str = "query.json",
         upload_timeout_seconds: int = 3600,
         upload_max_workers: int = 4,
-        cleanup_artifacts: bool = False,
         require_artifacts: bool = True,
         show_progress: bool = True,
         override_existing_results: bool = False,
@@ -395,8 +401,6 @@ class CyteType:
                 Defaults to 3600.
             upload_max_workers (int, optional): Number of parallel threads used to upload file
                 chunks. Each worker holds one chunk in memory (~100 MB). Defaults to 4.
-            cleanup_artifacts (bool, optional): Whether to delete generated artifact files after run
-                completes or fails. Defaults to False.
             require_artifacts (bool, optional): Whether to raise an error if artifact building or
                 uploading fails. When True (default), any artifact failure stops the run. Set to
                 False to skip artifacts and continue with annotation only. Defaults to True.
@@ -450,66 +454,61 @@ class CyteType:
             llm_configs,
         )
 
-        artifact_paths = [p for p in [self._vars_h5_path, self._obs_duckdb_path] if p is not None]
-        try:
-            uploaded_file_refs, artifact_errors = self._upload_artifacts(
-                upload_timeout_seconds=upload_timeout_seconds,
-                upload_max_workers=upload_max_workers,
-            )
-            if uploaded_file_refs:
-                payload["uploaded_files"] = uploaded_file_refs
+        uploaded_file_refs, artifact_errors = self._upload_artifacts(
+            upload_timeout_seconds=upload_timeout_seconds,
+            upload_max_workers=upload_max_workers,
+        )
+        if uploaded_file_refs:
+            payload["uploaded_files"] = uploaded_file_refs
 
-            if artifact_errors:
-                failed_names = ", ".join(name for name, _ in artifact_errors)
-                if require_artifacts:
-                    logger.error(
-                        f"Artifact build/upload failed for: {failed_names}. "
-                        "Rerun with `require_artifacts=False` to skip this error.\n"
-                        "Please report the error below in a new issue at "
-                        "https://github.com/NygenAnalytics/CyteType\n"
-                        f"({type(artifact_errors[0][1]).__name__}: {str(artifact_errors[0][1]).strip()})"
-                    )
-                    raise artifact_errors[0][1]
-                logger.warning(
+        if artifact_errors:
+            failed_names = ", ".join(name for name, _ in artifact_errors)
+            if require_artifacts:
+                logger.error(
                     f"Artifact build/upload failed for: {failed_names}. "
-                    "Continuing without those artifacts. "
-                    "Set `require_artifacts=True` to see the full traceback."
+                    "Rerun with `require_artifacts=False` to skip this error.\n"
+                    "Please report the error below in a new issue at "
+                    "https://github.com/NygenAnalytics/CyteType\n"
+                    f"({type(artifact_errors[0][1]).__name__}: {str(artifact_errors[0][1]).strip()})"
                 )
-
-            # Save query if requested
-            if save_query:
-                save_query_to_file(payload["input_data"], query_filename)
-
-            # Submit job and store details
-            print()
-            job_id = submit_annotation_job(self.api_url, self.auth_token, payload)
-            store_job_details(self.adata, job_id, self.api_url, results_prefix)
-
-            # Wait for completion
-            result = wait_for_completion(
-                self.api_url,
-                self.auth_token,
-                job_id,
-                poll_interval_seconds,
-                timeout_seconds,
-                show_progress,
+                raise artifact_errors[0][1]
+            logger.warning(
+                f"Artifact build/upload failed for: {failed_names}. "
+                "Continuing without those artifacts. "
+                "Set `require_artifacts=True` to see the full traceback."
             )
 
-            # Store results
-            store_annotations(
-                self.adata,
-                result,
-                job_id,
-                results_prefix,
-                self.group_key,
-                self.clusters,
-                check_unannotated=True,
-            )
+        # Save query if requested
+        if save_query:
+            save_query_to_file(payload["input_data"], query_filename)
 
-            return self.adata
-        finally:
-            if cleanup_artifacts:
-                self._cleanup_artifact_files(artifact_paths)
+        # Submit job and store details
+        print()
+        job_id = submit_annotation_job(self.api_url, self.auth_token, payload)
+        store_job_details(self.adata, job_id, self.api_url, results_prefix)
+
+        # Wait for completion
+        result = wait_for_completion(
+            self.api_url,
+            self.auth_token,
+            job_id,
+            poll_interval_seconds,
+            timeout_seconds,
+            show_progress,
+        )
+
+        # Store results
+        store_annotations(
+            self.adata,
+            result,
+            job_id,
+            results_prefix,
+            self.group_key,
+            self.clusters,
+            check_unannotated=True,
+        )
+
+        return self.adata
 
     def get_results(
         self,
