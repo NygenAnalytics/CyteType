@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 import anndata
 import numpy as np
@@ -21,7 +21,7 @@ class GroupStats:
 
 
 def _accumulate_group_stats(
-    X,
+    X: Any,
     cell_group_indices: np.ndarray,
     n_groups: int,
     n_genes: int,
@@ -46,7 +46,11 @@ def _accumulate_group_stats(
 
     chunk_starts = range(0, n_cells, cell_batch_size)
     try:
-        from tqdm.auto import tqdm
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=FutureWarning)
+            from tqdm.auto import tqdm
 
         chunk_iter = tqdm(chunk_starts, desc=progress_desc, unit="chunk")
     except ImportError:
@@ -177,11 +181,11 @@ def rank_genes_groups_backed(
         compute_moments=True,
         progress_desc="rank_genes_groups_backed",
     )
-    sum_ = stats.sum_
-    sum_sq_ = stats.sum_sq
     n_ = stats.n
     nnz_ = stats.nnz
-
+    sum_ = stats.sum_
+    sum_sq_ = stats.sum_sq
+    assert sum_ is not None and sum_sq_ is not None
     total_sum = sum_.sum(axis=0)
     total_sum_sq = sum_sq_.sum(axis=0)
 

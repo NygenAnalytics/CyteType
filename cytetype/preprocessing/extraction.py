@@ -127,8 +127,24 @@ def extract_visualization_coordinates(
     )
 
     # Sample cells from each group using pandas
+    unique_groups = coord_df["group"].unique()
+    try:
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=FutureWarning)
+            from tqdm.auto import tqdm
+
+        group_iter = tqdm(
+            unique_groups,
+            desc=f"Sampling coordinates from {coordinates_key}",
+            unit="group",
+        )
+    except ImportError:
+        group_iter = unique_groups
+
     sampled_coords = []
-    for group_label in coord_df["group"].unique():
+    for group_label in group_iter:
         group_mask = coord_df["group"] == group_label
         group_size = group_mask.sum()
         sample_size = min(max_cells_per_group, group_size)
@@ -137,12 +153,6 @@ def extract_visualization_coordinates(
             n=sample_size, random_state=random_state
         )
         sampled_coords.append(sampled_group)
-
-        if group_size > max_cells_per_group:
-            logger.info(
-                f"Sampled {sample_size} cells from group '{group_label}' "
-                f"(originally {group_size} cells)"
-            )
 
     # Concatenate all sampled groups
     sampled_coord_df: pd.DataFrame = pd.concat(sampled_coords, ignore_index=True)
@@ -156,9 +166,9 @@ def extract_visualization_coordinates(
         for label in sampled_coord_df["group"].values
     ]
 
-    logger.info(
-        f"Extracted {len(sampled_coordinates)} coordinate points "
-        f"(sampled from {len(coordinates)} total cells)"
-    )
+    # logger.info(
+    #     f"Extracted {len(sampled_coordinates)} coordinate points "
+    #     f"(sampled from {len(coordinates)} total cells)"
+    # )
 
     return sampled_coordinates, sampled_cluster_labels

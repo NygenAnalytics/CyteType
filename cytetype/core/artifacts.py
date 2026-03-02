@@ -168,7 +168,19 @@ def _write_raw_group(
     )
 
     indptr: list[int] = [0]
-    for start in range(0, n_obs, cell_batch):
+    batch_starts = range(0, n_obs, cell_batch)
+    try:
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=FutureWarning)
+            from tqdm.auto import tqdm
+
+        batch_iter = tqdm(batch_starts, desc="Writing raw counts", unit="batch")
+    except ImportError:
+        batch_iter = batch_starts
+
+    for start in batch_iter:
         end = min(start + cell_batch, n_obs)
         raw_chunk = mat[start:end]
 
@@ -220,7 +232,7 @@ def save_features_matrix(
         )
 
     if col_batch is None:
-        col_batch = max(1, int(100_000_000 / max(n_rows, 1)))
+        col_batch = max(1, int(1_000_000_000 / max(n_rows, 1)))
 
     chunk_size = max(1, min(n_rows * 10, min_chunk_size))
     with h5py.File(out_file, "w") as f:
@@ -246,7 +258,21 @@ def save_features_matrix(
         )
 
         indptr: list[int] = [0]
-        for start in range(0, n_cols, col_batch):
+        col_starts = range(0, n_cols, col_batch)
+        try:
+            import warnings
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=FutureWarning)
+                from tqdm.auto import tqdm
+
+            col_iter = tqdm(
+                col_starts, desc="Writing pivoted normalized counts", unit="batch"
+            )
+        except ImportError:
+            col_iter = col_starts
+
+        for start in col_iter:
             end = min(start + col_batch, n_cols)
             raw_chunk = mat[:, start:end]
             chunk = (

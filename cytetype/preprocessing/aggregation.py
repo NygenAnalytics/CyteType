@@ -1,6 +1,5 @@
 import anndata
 import numpy as np
-import pandas as pd
 
 from .marker_detection import _accumulate_group_stats
 
@@ -36,7 +35,7 @@ def aggregate_expression_percentages(
         adata.shape[1],
         cell_batch_size=cell_batch_size,
         compute_nnz=True,
-        progress_desc="expression_percentages",
+        progress_desc="Calculating expression percentages",
     )
 
     with np.errstate(divide="ignore", invalid="ignore"):

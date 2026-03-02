@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from typing import Any
 from importlib.metadata import PackageNotFoundError, version
@@ -155,7 +156,6 @@ class CyteType:
             self.cluster_map[str(x)] for x in adata.obs[group_key].values.tolist()
         ]
 
-        logger.info("Calculating expression percentages...")
         gene_names = (
             adata.var[self.gene_symbols_column].tolist()
             if self.gene_symbols_column is not None
@@ -197,7 +197,6 @@ class CyteType:
             self.group_metadata = {}
 
         # Prepare visualization data with sampling
-        logger.info("Extracting sampled visualization coordinates...")
         sampled_coordinates, sampled_cluster_labels = extract_visualization_coordinates(
             adata=adata,
             coordinates_key=self.coordinates_key,
@@ -235,6 +234,7 @@ class CyteType:
                 raw_mat=raw_mat,
                 raw_col_indices=raw_col_indices,
             )
+            sys.stderr.flush()
             self._vars_h5_path: str | None = vars_h5_path
         except Exception as exc:
             logger.warning(f"vars.h5 artifact failed during build: {exc}")
@@ -243,7 +243,7 @@ class CyteType:
 
         # Build obs.duckdb
         try:
-            logger.info("Saving obs.duckdb artifact from observation metadata...")
+            logger.info("Writing obs.duckdb artifact from observation metadata...")
             obsm_coordinates = (
                 self.adata.obsm[self.coordinates_key]
                 if self.coordinates_key and self.coordinates_key in self.adata.obsm
@@ -255,6 +255,7 @@ class CyteType:
                 obsm_coordinates=obsm_coordinates,
                 coordinates_key=self.coordinates_key,
             )
+            sys.stderr.flush()
             self._obs_duckdb_path: str | None = obs_duckdb_path
         except Exception as exc:
             logger.warning(f"obs.duckdb artifact failed during build: {exc}")
