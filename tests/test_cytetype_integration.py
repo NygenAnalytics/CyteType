@@ -231,11 +231,14 @@ def test_cytetype_run_cleanup_artifacts(
     monkeypatch.setattr("cytetype.main.save_features_matrix", _save_vars)
     monkeypatch.setattr("cytetype.main.save_obs_duckdb_file", _save_obs)
 
-    ct = CyteType(mock_adata, group_key="leiden")
-    ct.run(
-        study_context="Test",
+    ct = CyteType(
+        mock_adata,
+        group_key="leiden",
         vars_h5_path=str(vars_path),
         obs_duckdb_path=str(obs_path),
+    )
+    ct.run(
+        study_context="Test",
         cleanup_artifacts=True,
     )
 

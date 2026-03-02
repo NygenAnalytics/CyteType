@@ -79,6 +79,8 @@ class CyteType:
         pcent_batch_size: int = 2000,
         coordinates_key: str = "X_umap",
         max_cells_per_group: int = 1000,
+        vars_h5_path: str = "vars.h5",
+        obs_duckdb_path: str = "obs.duckdb",
         api_url: str = "https://prod.cytetype.nygen.io",
         auth_token: str | None = None,
     ) -> None:
@@ -128,6 +130,7 @@ class CyteType:
         self.max_cells_per_group = max_cells_per_group
         self.api_url = api_url
         self.auth_token = auth_token
+        self._artifact_build_errors: list[tuple[str, Exception]] = []
 
         # Validate data and get the best available coordinates key
         self.coordinates_key = validate_adata(
@@ -198,6 +201,54 @@ class CyteType:
             "clusters": sampled_cluster_labels,
         }
 
+        # Resolve raw counts once and cache
+        self._raw_counts_result = self._resolve_raw_counts()
+        if self._raw_counts_result is None:
+            logger.warning(
+                "No integer raw counts found in adata.layers['counts'], "
+                "adata.raw.X, or adata.X. Skipping raw counts in vars.h5."
+            )
+
+        # Build vars.h5
+        try:
+            logger.info("Saving vars.h5 artifact from normalized counts...")
+            raw_mat, raw_col_indices = (
+                self._raw_counts_result if self._raw_counts_result is not None else (None, None)
+            )
+            save_features_matrix(
+                out_file=vars_h5_path,
+                mat=self.adata.X,
+                var_df=self.adata.var,
+                var_names=self.adata.var_names,
+                raw_mat=raw_mat,
+                raw_col_indices=raw_col_indices,
+            )
+            self._vars_h5_path: str | None = vars_h5_path
+        except Exception as exc:
+            logger.warning(f"vars.h5 artifact failed during build: {exc}")
+            self._vars_h5_path = None
+            self._artifact_build_errors.append(("vars_h5", exc))
+
+        # Build obs.duckdb
+        try:
+            logger.info("Saving obs.duckdb artifact from observation metadata...")
+            obsm_coordinates = (
+                self.adata.obsm[self.coordinates_key]
+                if self.coordinates_key and self.coordinates_key in self.adata.obsm
+                else None
+            )
+            save_obs_duckdb_file(
+                out_file=obs_duckdb_path,
+                obs_df=self.adata.obs,
+                obsm_coordinates=obsm_coordinates,
+                coordinates_key=self.coordinates_key,
+            )
+            self._obs_duckdb_path: str | None = obs_duckdb_path
+        except Exception as exc:
+            logger.warning(f"obs.duckdb artifact failed during build: {exc}")
+            self._obs_duckdb_path = None
+            self._artifact_build_errors.append(("obs_duckdb", exc))
+
         logger.info("Data preparation completed. Ready for submitting jobs.")
 
     def _resolve_raw_counts(
@@ -223,92 +274,61 @@ class CyteType:
 
         return None
 
-    def _build_and_upload_artifacts(
+    def _upload_artifacts(
         self,
-        vars_h5_path: str,
-        obs_duckdb_path: str,
         upload_timeout_seconds: int,
         upload_max_workers: int = 4,
-        coordinates_key: str | None = None,
     ) -> tuple[dict[str, str], list[tuple[str, Exception]]]:
-        """Build and upload each artifact as an independent unit.
+        """Upload pre-built artifact files to the server.
 
         Returns (uploaded_ids, errors) so the caller can decide whether
         partial success is acceptable.
         """
         uploaded: dict[str, str] = {}
-        errors: list[tuple[str, Exception]] = []
+        errors: list[tuple[str, Exception]] = list(self._artifact_build_errors)
         timeout = (30.0, float(upload_timeout_seconds))
 
-        # --- vars.h5 (save then upload) ---
-        try:
-            logger.info("Saving vars.h5 artifact from normalized counts...")
-            raw_result = self._resolve_raw_counts()
-            if raw_result is None:
-                logger.warning(
-                    "No integer raw counts found in adata.layers['counts'], "
-                    "adata.raw.X, or adata.X. Skipping raw counts in vars.h5."
+        # --- vars.h5 upload ---
+        if self._vars_h5_path is not None:
+            try:
+                logger.info("Uploading vars.h5 artifact...")
+                vars_upload = upload_vars_h5_file(
+                    self.api_url,
+                    self.auth_token,
+                    self._vars_h5_path,
+                    timeout=timeout,
+                    max_workers=upload_max_workers,
                 )
-                raw_mat, raw_col_indices = None, None
-            else:
-                raw_mat, raw_col_indices = raw_result
-            save_features_matrix(
-                out_file=vars_h5_path,
-                mat=self.adata.X,
-                var_df=self.adata.var,
-                var_names=self.adata.var_names,
-                raw_mat=raw_mat,
-                raw_col_indices=raw_col_indices,
-            )
-            logger.info("Uploading vars.h5 artifact...")
-            vars_upload = upload_vars_h5_file(
-                self.api_url,
-                self.auth_token,
-                vars_h5_path,
-                timeout=timeout,
-                max_workers=upload_max_workers,
-            )
-            if vars_upload.file_kind != "vars_h5":
-                raise ValueError(
-                    f"Unexpected upload file_kind for vars artifact: {vars_upload.file_kind}"
-                )
-            uploaded["vars_h5"] = vars_upload.upload_id
-        except Exception as exc:
-            logger.warning(f"vars.h5 artifact failed: {exc}")
-            errors.append(("vars_h5", exc))
+                if vars_upload.file_kind != "vars_h5":
+                    raise ValueError(
+                        f"Unexpected upload file_kind for vars artifact: {vars_upload.file_kind}"
+                    )
+                uploaded["vars_h5"] = vars_upload.upload_id
+            except Exception as exc:
+                logger.warning(f"vars.h5 upload failed: {exc}")
+                errors.append(("vars_h5", exc))
 
         print()
 
-        # --- obs.duckdb (save then upload) ---
-        try:
-            logger.info("Saving obs.duckdb artifact from observation metadata...")
-            obsm_coordinates = (
-                self.adata.obsm[coordinates_key]
-                if coordinates_key and coordinates_key in self.adata.obsm
-                else None
-            )
-            save_obs_duckdb_file(
-                out_file=obs_duckdb_path,
-                obs_df=self.adata.obs,
-                obsm_coordinates=obsm_coordinates,
-                coordinates_key=coordinates_key,
-            )
-            logger.info("Uploading obs.duckdb artifact...")
-            obs_upload = upload_obs_duckdb_file(
-                self.api_url,
-                self.auth_token,
-                obs_duckdb_path,
-                timeout=timeout,
-                max_workers=upload_max_workers,
-            )
-            if obs_upload.file_kind != "obs_duckdb":
-                raise ValueError(
-                    f"Unexpected upload file_kind for obs artifact: {obs_upload.file_kind}"
+        # --- obs.duckdb upload ---
+        if self._obs_duckdb_path is not None:
+            try:
+                logger.info("Uploading obs.duckdb artifact...")
+                obs_upload = upload_obs_duckdb_file(
+                    self.api_url,
+                    self.auth_token,
+                    self._obs_duckdb_path,
+                    timeout=timeout,
+                    max_workers=upload_max_workers,
                 )
-            uploaded["obs_duckdb"] = obs_upload.upload_id
-        except Exception as exc:
-            logger.warning(f"obs.duckdb artifact failed: {exc}")
-            errors.append(("obs_duckdb", exc))
+                if obs_upload.file_kind != "obs_duckdb":
+                    raise ValueError(
+                        f"Unexpected upload file_kind for obs artifact: {obs_upload.file_kind}"
+                    )
+                uploaded["obs_duckdb"] = obs_upload.upload_id
+            except Exception as exc:
+                logger.warning(f"obs.duckdb upload failed: {exc}")
+                errors.append(("obs_duckdb", exc))
 
         return uploaded, errors
 
@@ -333,8 +353,6 @@ class CyteType:
         auth_token: str | None = None,
         save_query: bool = True,
         query_filename: str = "query.json",
-        vars_h5_path: str = "vars.h5",
-        obs_duckdb_path: str = "obs.duckdb",
         upload_timeout_seconds: int = 3600,
         upload_max_workers: int = 4,
         cleanup_artifacts: bool = False,
@@ -373,10 +391,6 @@ class CyteType:
             save_query (bool, optional): Whether to save the query to a file. Defaults to True.
             query_filename (str, optional): Filename for saving the query when save_query is True.
                 Defaults to "query.json".
-            vars_h5_path (str, optional): Local output path for generated vars.h5 artifact.
-                Defaults to "vars.h5".
-            obs_duckdb_path (str, optional): Local output path for generated obs.duckdb artifact.
-                Defaults to "obs.duckdb".
             upload_timeout_seconds (int, optional): Socket read timeout used for each artifact upload.
                 Defaults to 3600.
             upload_max_workers (int, optional): Number of parallel threads used to upload file
@@ -423,7 +437,7 @@ class CyteType:
         if upload_timeout_seconds <= 0:
             raise ValueError("upload_timeout_seconds must be greater than 0")
 
-        # Validate the base payload before doing potentially expensive uploads.
+        # Validate the base payload before uploading.
         payload = build_annotation_payload(
             study_context,
             metadata,
@@ -436,14 +450,11 @@ class CyteType:
             llm_configs,
         )
 
-        artifact_paths = [vars_h5_path, obs_duckdb_path]
+        artifact_paths = [p for p in [self._vars_h5_path, self._obs_duckdb_path] if p is not None]
         try:
-            uploaded_file_refs, artifact_errors = self._build_and_upload_artifacts(
-                vars_h5_path=vars_h5_path,
-                obs_duckdb_path=obs_duckdb_path,
+            uploaded_file_refs, artifact_errors = self._upload_artifacts(
                 upload_timeout_seconds=upload_timeout_seconds,
                 upload_max_workers=upload_max_workers,
-                coordinates_key=self.coordinates_key,
             )
             if uploaded_file_refs:
                 payload["uploaded_files"] = uploaded_file_refs
