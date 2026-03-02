@@ -10,7 +10,7 @@ def extract_marker_genes(
     rank_genes_key: str,
     cluster_map: dict[str, str],
     n_top_genes: int,
-    gene_symbols_col: str,
+    gene_symbols_col: str | None,
 ) -> dict[str, list[str]]:
     """Extract top marker genes from rank_genes_groups results.
 
@@ -20,7 +20,8 @@ def extract_marker_genes(
         rank_genes_key: Key in adata.uns containing rank_genes_groups results
         cluster_map: Dictionary mapping original labels to cluster IDs
         n_top_genes: Number of top genes to extract per cluster
-        gene_symbols_col: Column in adata.var containing gene symbols
+        gene_symbols_col: Column in adata.var containing gene symbols,
+            or None to use var_names directly (identity mapping).
 
     Returns:
         Dictionary mapping cluster IDs to lists of marker gene symbols
@@ -44,7 +45,10 @@ def extract_marker_genes(
                 f"Failed to extract marker gene names from `rank_genes_groups`. Error: {e}"
             )
 
-    gene_ids_to_name = adata.var[gene_symbols_col].to_dict()
+    if gene_symbols_col is not None:
+        gene_ids_to_name = adata.var[gene_symbols_col].to_dict()
+    else:
+        gene_ids_to_name = dict(zip(adata.var_names, adata.var_names))
     markers = {}
     any_genes_found = False
 

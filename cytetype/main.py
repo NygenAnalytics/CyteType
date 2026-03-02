@@ -14,6 +14,7 @@ from .api.client import (
 )
 from .preprocessing import (
     validate_adata,
+    resolve_gene_symbols_column,
     aggregate_expression_percentages,
     extract_marker_genes,
     aggregate_cluster_metadata,
@@ -55,7 +56,7 @@ class CyteType:
     adata: anndata.AnnData
     group_key: str
     rank_key: str
-    gene_symbols_column: str
+    gene_symbols_column: str | None
     n_top_genes: int
     pcent_batch_size: int
     coordinates_key: str | None
@@ -72,7 +73,7 @@ class CyteType:
         adata: anndata.AnnData,
         group_key: str,
         rank_key: str = "rank_genes_groups",
-        gene_symbols_column: str = "gene_symbols",
+        gene_symbols_column: str | None = None,
         n_top_genes: int = 50,
         aggregate_metadata: bool = True,
         min_percentage: int = 10,
@@ -94,8 +95,10 @@ class CyteType:
             rank_key (str, optional): The key in `adata.uns` containing differential expression
                 results from `sc.tl.rank_genes_groups`. Must use the same `groupby` as `group_key`.
                 Defaults to "rank_genes_groups".
-            gene_symbols_column (str, optional): Name of the column in `adata.var` that contains
-                the gene symbols. Defaults to "gene_symbols".
+            gene_symbols_column (str | None, optional): Name of the column in `adata.var` that
+                contains gene symbols. When None (default), auto-detects by checking well-known
+                column names (feature_name, gene_symbols, etc.), then adata.var_names, then
+                heuristic scan of all var columns. Defaults to None.
             n_top_genes (int, optional): Number of top marker genes per cluster to extract during
                 initialization. Higher values may improve annotation quality but increase memory usage.
                 Defaults to 50.
@@ -123,7 +126,6 @@ class CyteType:
         self.adata = adata
         self.group_key = group_key
         self.rank_key = rank_key
-        self.gene_symbols_column = gene_symbols_column
         self.n_top_genes = n_top_genes
         self.pcent_batch_size = pcent_batch_size
         self.coordinates_key = coordinates_key
@@ -132,9 +134,12 @@ class CyteType:
         self.auth_token = auth_token
         self._artifact_build_errors: list[tuple[str, Exception]] = []
 
-        # Validate data and get the best available coordinates key
+        self.gene_symbols_column = resolve_gene_symbols_column(
+            adata, gene_symbols_column
+        )
+
         self.coordinates_key = validate_adata(
-            adata, group_key, rank_key, gene_symbols_column, coordinates_key
+            adata, group_key, rank_key, self.gene_symbols_column, coordinates_key
         )
 
         # Use original labels as IDs if all are short (<=3 chars), otherwise enumerate
@@ -151,11 +156,16 @@ class CyteType:
         ]
 
         logger.info("Calculating expression percentages...")
+        gene_names = (
+            adata.var[self.gene_symbols_column].tolist()
+            if self.gene_symbols_column is not None
+            else adata.var_names.tolist()
+        )
         self.expression_percentages = aggregate_expression_percentages(
             adata=adata,
             clusters=self.clusters,
             batch_size=pcent_batch_size,
-            gene_names=adata.var[self.gene_symbols_column].tolist(),
+            gene_names=gene_names,
         )
 
         logger.info("Extracting marker genes...")

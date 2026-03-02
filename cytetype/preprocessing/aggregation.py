@@ -17,7 +17,7 @@ def aggregate_expression_percentages(
     Returns:
         Dictionary mapping gene names to cluster-level expression percentages
     """
-    pcent = {}
+    pcent: dict[str, dict[str, float]] = {}
     n_genes = adata.shape[1]
 
     for s in range(0, n_genes, batch_size):
@@ -32,10 +32,17 @@ def aggregate_expression_percentages(
                 f"Unexpected data type in `adata.raw.X` slice: {type(batch_data)}"
             )
 
-        df = pd.DataFrame(batch_data > 0, columns=gene_names[s:e]) * 100
+        # Use integer columns to avoid duplicate-name warnings, then
+        # map back to gene names (last duplicate wins, matching dict semantics).
+        df = pd.DataFrame(batch_data > 0) * 100
         df["clusters"] = clusters
-        pcent.update(df.groupby("clusters").mean().round(2).to_dict())
-        del df, batch_data
+        means = df.groupby("clusters").mean().round(2)
+
+        batch_names = gene_names[s:e]
+        for col_idx, name in enumerate(batch_names):
+            pcent[name] = means[col_idx].to_dict()
+
+        del df, batch_data, means
     return pcent
 
 
