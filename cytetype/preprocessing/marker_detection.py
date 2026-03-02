@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Literal
 
 import anndata
@@ -9,6 +10,70 @@ from natsort import natsorted
 from scipy.stats import ttest_ind_from_stats
 
 from ..config import logger
+
+
+@dataclass
+class GroupStats:
+    n: np.ndarray
+    nnz: np.ndarray | None
+    sum_: np.ndarray | None
+    sum_sq: np.ndarray | None
+
+
+def _accumulate_group_stats(
+    X,
+    cell_group_indices: np.ndarray,
+    n_groups: int,
+    n_genes: int,
+    cell_batch_size: int = 5000,
+    compute_nnz: bool = False,
+    compute_moments: bool = False,
+    progress_desc: str = "streaming",
+) -> GroupStats:
+    """Single-pass row-batched accumulation of per-group statistics.
+
+    Streams row chunks from *X* (works with dense, sparse, and backed
+    matrices) and accumulates the requested statistics per group.
+    """
+    n_cells = X.shape[0]
+
+    n_ = np.zeros(n_groups, dtype=np.int64)
+    nnz_ = np.zeros((n_groups, n_genes), dtype=np.int64) if compute_nnz else None
+    sum_ = np.zeros((n_groups, n_genes), dtype=np.float64) if compute_moments else None
+    sum_sq_ = (
+        np.zeros((n_groups, n_genes), dtype=np.float64) if compute_moments else None
+    )
+
+    chunk_starts = range(0, n_cells, cell_batch_size)
+    try:
+        from tqdm.auto import tqdm
+
+        chunk_iter = tqdm(chunk_starts, desc=progress_desc, unit="chunk")
+    except ImportError:
+        chunk_iter = chunk_starts
+
+    for start in chunk_iter:
+        end = min(start + cell_batch_size, n_cells)
+        chunk = X[start:end]
+        if hasattr(chunk, "toarray"):
+            chunk = chunk.toarray()
+        chunk = np.asarray(chunk, dtype=np.float64)
+        chunk_labels = cell_group_indices[start:end]
+
+        for g_idx in range(n_groups):
+            mask = chunk_labels == g_idx
+            if not mask.any():
+                continue
+            g_data = chunk[mask]
+            n_[g_idx] += mask.sum()
+            if sum_ is not None:
+                sum_[g_idx] += g_data.sum(axis=0)
+            if sum_sq_ is not None:
+                sum_sq_[g_idx] += (g_data**2).sum(axis=0)
+            if nnz_ is not None:
+                nnz_[g_idx] += (g_data != 0).sum(axis=0)
+
+    return GroupStats(n=n_, nnz=nnz_, sum_=sum_, sum_sq=sum_sq_)
 
 
 def _benjamini_hochberg(pvals: np.ndarray) -> np.ndarray:
@@ -102,37 +167,20 @@ def rank_genes_groups_backed(
         n_cells,
         cell_batch_size,
     )
-    sum_ = np.zeros((n_groups, n_genes_total), dtype=np.float64)
-    sum_sq_ = np.zeros((n_groups, n_genes_total), dtype=np.float64)
-    n_ = np.zeros(n_groups, dtype=np.int64)
-    nnz_ = np.zeros((n_groups, n_genes_total), dtype=np.int64) if pts else None
-
-    chunk_starts = range(0, n_cells, cell_batch_size)
-    try:
-        from tqdm.auto import tqdm
-
-        chunk_iter = tqdm(chunk_starts, desc="rank_genes_groups_backed", unit="chunk")
-    except ImportError:
-        chunk_iter = chunk_starts
-
-    for start in chunk_iter:
-        end = min(start + cell_batch_size, n_cells)
-        chunk = X[start:end]
-        if hasattr(chunk, "toarray"):
-            chunk = chunk.toarray()
-        chunk = np.asarray(chunk, dtype=np.float64)
-        chunk_labels = cell_group_indices[start:end]
-
-        for g_idx in range(n_groups):
-            mask = chunk_labels == g_idx
-            if not mask.any():
-                continue
-            g_data = chunk[mask]
-            sum_[g_idx] += g_data.sum(axis=0)
-            sum_sq_[g_idx] += (g_data**2).sum(axis=0)
-            n_[g_idx] += mask.sum()
-            if nnz_ is not None:
-                nnz_[g_idx] += (g_data != 0).sum(axis=0)
+    stats = _accumulate_group_stats(
+        X,
+        cell_group_indices,
+        n_groups,
+        n_genes_total,
+        cell_batch_size=cell_batch_size,
+        compute_nnz=pts,
+        compute_moments=True,
+        progress_desc="rank_genes_groups_backed",
+    )
+    sum_ = stats.sum_
+    sum_sq_ = stats.sum_sq
+    n_ = stats.n
+    nnz_ = stats.nnz
 
     total_sum = sum_.sum(axis=0)
     total_sum_sq = sum_sq_.sum(axis=0)

@@ -77,7 +77,7 @@ class CyteType:
         n_top_genes: int = 50,
         aggregate_metadata: bool = True,
         min_percentage: int = 10,
-        pcent_batch_size: int = 2000,
+        pcent_batch_size: int = 5000,
         coordinates_key: str = "X_umap",
         max_cells_per_group: int = 1000,
         vars_h5_path: str = "vars.h5",
@@ -106,8 +106,8 @@ class CyteType:
                 Defaults to True.
             min_percentage (int, optional): Minimum percentage of cells in a group to include in the
                 cluster context. Defaults to 10.
-            pcent_batch_size (int, optional): Batch size for calculating expression percentages to
-                optimize memory usage. Defaults to 2000.
+            pcent_batch_size (int, optional): Number of cells to process per chunk when
+                calculating expression percentages. Defaults to 5000.
             coordinates_key (str, optional): Key in adata.obsm containing 2D coordinates for
                 visualization. Must be a 2D array with same number of elements as clusters.
                 Defaults to "X_umap".
@@ -164,8 +164,8 @@ class CyteType:
         self.expression_percentages = aggregate_expression_percentages(
             adata=adata,
             clusters=self.clusters,
-            batch_size=pcent_batch_size,
             gene_names=gene_names,
+            cell_batch_size=pcent_batch_size,
         )
 
         logger.info("Extracting marker genes...")
