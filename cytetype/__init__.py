@@ -4,8 +4,9 @@ import requests
 
 from .config import logger
 from .main import CyteType
+from .preprocessing.marker_detection import rank_genes_groups_backed
 
-__all__ = ["CyteType"]
+__all__ = ["CyteType", "rank_genes_groups_backed"]
 
 _PYPI_JSON_URL = "https://pypi.org/pypi/cytetype/json"
 

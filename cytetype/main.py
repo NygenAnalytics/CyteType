@@ -213,7 +213,9 @@ class CyteType:
         try:
             logger.info("Saving vars.h5 artifact from normalized counts...")
             raw_mat, raw_col_indices = (
-                self._raw_counts_result if self._raw_counts_result is not None else (None, None)
+                self._raw_counts_result
+                if self._raw_counts_result is not None
+                else (None, None)
             )
             save_features_matrix(
                 out_file=vars_h5_path,
@@ -338,7 +340,10 @@ class CyteType:
         Call this after run() completes to remove the vars.h5 and obs.duckdb
         files from disk. Paths are cleared so repeated calls are safe.
         """
-        for attr, path in [("_vars_h5_path", self._vars_h5_path), ("_obs_duckdb_path", self._obs_duckdb_path)]:
+        for attr, path in [
+            ("_vars_h5_path", self._vars_h5_path),
+            ("_obs_duckdb_path", self._obs_duckdb_path),
+        ]:
             if path is not None:
                 try:
                     Path(path).unlink(missing_ok=True)
