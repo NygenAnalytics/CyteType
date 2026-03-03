@@ -14,11 +14,24 @@ from ..config import logger
 
 MAX_UPLOAD_BYTES: dict[UploadFileKind, int] = {
     "obs_duckdb": 100 * 1024 * 1024,  # 100MB
-    "vars_h5": 10 * 1024 * 1024 * 1024,  # 10GB
+    "vars_h5": 50 * 1024 * 1024 * 1024,  # 10GB
 }
 
 _CHUNK_RETRY_DELAYS = (1, 5, 20)
 _RETRYABLE_API_ERROR_CODES = frozenset({"INTERNAL_ERROR", "HTTP_ERROR"})
+
+
+def _try_import_tqdm() -> type | None:
+    try:
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            from tqdm.auto import tqdm
+
+        return tqdm  # type: ignore[no-any-return]
+    except ImportError:
+        return None
 
 
 def _upload_file(
@@ -26,7 +39,7 @@ def _upload_file(
     auth_token: str | None,
     file_kind: UploadFileKind,
     file_path: str,
-    timeout: float | tuple[float, float] = (30.0, 3600.0),
+    timeout: float | tuple[float, float] = (60.0, 3600.0),
     max_workers: int = 4,
 ) -> UploadResponse:
     path_obj = Path(file_path)
@@ -62,6 +75,12 @@ def _upload_file(
     # Memory is bounded to ~max_workers × chunk_size because each thread
     # reads its chunk on demand via seek+read.
     _tls = threading.local()
+    tqdm_cls = _try_import_tqdm()
+    pbar = (
+        tqdm_cls(total=n_chunks, desc="Uploading", unit="chunk")
+        if tqdm_cls is not None and n_chunks > 0
+        else None
+    )
     _progress_lock = threading.Lock()
     _chunks_done = [0]
 
@@ -82,15 +101,18 @@ def _upload_file(
                     data=chunk_data,
                     timeout=timeout,
                 )
-                with _progress_lock:
-                    _chunks_done[0] += 1
-                    done = _chunks_done[0]
-                pct = 100 * done / n_chunks
-                print(
-                    f"\r  Uploading: {done}/{n_chunks} chunks ({pct:.0f}%)",
-                    end="",
-                    flush=True,
-                )
+                if pbar is not None:
+                    pbar.update(1)
+                else:
+                    with _progress_lock:
+                        _chunks_done[0] += 1
+                        done = _chunks_done[0]
+                    pct = 100 * done / n_chunks
+                    print(
+                        f"\r  Uploading: {done}/{n_chunks} chunks ({pct:.0f}%)",
+                        end="",
+                        flush=True,
+                    )
                 return
             except (NetworkError, TimeoutError) as exc:
                 last_exc = exc
@@ -103,13 +125,9 @@ def _upload_file(
             if attempt < len(_CHUNK_RETRY_DELAYS):
                 delay = _CHUNK_RETRY_DELAYS[attempt]
                 logger.warning(
-                    "Chunk %d/%d upload failed (attempt %d/%d), retrying in %ds: %s",
-                    chunk_idx + 1,
-                    n_chunks,
-                    attempt + 1,
-                    1 + len(_CHUNK_RETRY_DELAYS),
-                    delay,
-                    last_exc,
+                    f"Chunk {chunk_idx + 1}/{n_chunks} upload failed "
+                    f"(attempt {attempt + 1}/{1 + len(_CHUNK_RETRY_DELAYS)}), "
+                    f"retrying in {delay}s: {last_exc}"
                 )
                 time.sleep(delay)
 
@@ -120,9 +138,17 @@ def _upload_file(
         try:
             with ThreadPoolExecutor(max_workers=effective_workers) as pool:
                 list(pool.map(_upload_chunk, range(n_chunks)))
-            print(f"\r  \033[92m✓\033[0m Uploaded {n_chunks}/{n_chunks} chunks (100%)")
+            if pbar is not None:
+                pbar.close()
+            else:
+                print(
+                    f"\r  \033[92m✓\033[0m Uploaded {n_chunks}/{n_chunks} chunks (100%)"
+                )
         except BaseException:
-            print()  # ensure newline on failure
+            if pbar is not None:
+                pbar.close()
+            else:
+                print()
             raise
 
     # Step 3 – Complete upload (returns same UploadResponse shape as before)

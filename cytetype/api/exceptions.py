@@ -56,6 +56,12 @@ class LLMValidationError(APIError):
     pass
 
 
+class ClientDisconnectedError(APIError):
+    """Server detected client disconnection mid-request - CLIENT_DISCONNECTED (HTTP 499)."""
+
+    pass
+
+
 # Client-side errors with default messages
 class TimeoutError(CyteTypeError):
     """Client-side timeout waiting for results."""
@@ -87,6 +93,7 @@ ERROR_CODE_TO_EXCEPTION = {
     "JOB_NOT_FOUND": JobNotFoundError,
     "JOB_FAILED": JobFailedError,
     "LLM_VALIDATION_FAILED": LLMValidationError,
+    "CLIENT_DISCONNECTED": ClientDisconnectedError,
     "JOB_PROCESSING": APIError,  # Generic - expected during polling
     "JOB_NOT_COMPLETED": APIError,  # Generic
     "HTTP_ERROR": APIError,  # Generic

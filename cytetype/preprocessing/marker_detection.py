@@ -64,18 +64,17 @@ def _accumulate_group_stats(
         chunk = np.asarray(chunk, dtype=np.float64)
         chunk_labels = cell_group_indices[start:end]
 
-        for g_idx in range(n_groups):
-            mask = chunk_labels == g_idx
-            if not mask.any():
-                continue
-            g_data = chunk[mask]
-            n_[g_idx] += mask.sum()
-            if sum_ is not None:
-                sum_[g_idx] += g_data.sum(axis=0)
-            if sum_sq_ is not None:
-                sum_sq_[g_idx] += (g_data**2).sum(axis=0)
-            if nnz_ is not None:
-                nnz_[g_idx] += (g_data != 0).sum(axis=0)
+        batch_len = end - start
+        indicator = np.zeros((n_groups, batch_len), dtype=np.float64)
+        indicator[chunk_labels, np.arange(batch_len)] = 1.0
+
+        n_ += indicator.sum(axis=1).astype(np.int64)
+        if sum_ is not None:
+            sum_ += indicator @ chunk
+        if sum_sq_ is not None:
+            sum_sq_ += indicator @ (chunk**2)
+        if nnz_ is not None:
+            nnz_ += (indicator @ (chunk != 0).astype(np.float64)).astype(np.int64)
 
     return GroupStats(n=n_, nnz=nnz_, sum_=sum_, sum_sq=sum_sq_)
 
