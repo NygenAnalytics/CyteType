@@ -72,7 +72,7 @@ def subsample_by_group(
 
         subsampled.append(subset.to_memory() if is_backed else subset.copy())
 
-    result = anndata.concat(subsampled)
+    result = anndata.concat(subsampled, merge="first")
 
     logger.info(f"Subsampling complete: {adata.n_obs} -> {result.n_obs} cells")
 
