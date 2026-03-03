@@ -300,7 +300,7 @@ class CyteType:
         """
         uploaded: dict[str, str] = {}
         errors: list[tuple[str, Exception]] = list(self._artifact_build_errors)
-        timeout = (30.0, float(upload_timeout_seconds))
+        timeout = (60.0, float(upload_timeout_seconds))
 
         # --- vars.h5 upload ---
         if self._vars_h5_path is not None:

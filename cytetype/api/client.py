@@ -162,7 +162,7 @@ def upload_obs_duckdb(
     base_url: str,
     auth_token: str | None,
     file_path: str,
-    timeout: float | tuple[float, float] = (30.0, 3600.0),
+    timeout: float | tuple[float, float] = (60.0, 3600.0),
     max_workers: int = 4,
 ) -> UploadResponse:
     return _upload_file(
@@ -179,7 +179,7 @@ def upload_vars_h5(
     base_url: str,
     auth_token: str | None,
     file_path: str,
-    timeout: float | tuple[float, float] = (30.0, 3600.0),
+    timeout: float | tuple[float, float] = (60.0, 3600.0),
     max_workers: int = 4,
 ) -> UploadResponse:
     return _upload_file(
