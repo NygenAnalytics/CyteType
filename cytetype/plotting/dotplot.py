@@ -58,9 +58,7 @@ def marker_dotplot(
 
     raw_annotations = results.get("raw_annotations", {})
     if not raw_annotations:
-        raise ValueError(
-            "No raw_annotations found in CyteType results."
-        )
+        raise ValueError("No raw_annotations found in CyteType results.")
 
     markers: dict[str, list[str]] = {}
     categories_order: list[str] = []
@@ -78,9 +76,7 @@ def marker_dotplot(
                 )
                 continue
 
-            full_output = (
-                cluster_data["latest"]["annotation"]["fullOutput"]
-            )
+            full_output = cluster_data["latest"]["annotation"]["fullOutput"]
             cell_type = full_output["cellType"]
 
             categories_order.append(cell_type["label"])

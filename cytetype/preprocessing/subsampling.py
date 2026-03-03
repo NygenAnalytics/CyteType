@@ -62,7 +62,9 @@ def subsample_by_group(
 
         if n_cells > max_cells_per_group:
             keep = pd.Series(False, index=adata.obs.index)
-            sampled = mask[mask].sample(n=max_cells_per_group, random_state=random_state)
+            sampled = mask[mask].sample(
+                n=max_cells_per_group, random_state=random_state
+            )
             keep[sampled.index] = True
             subset = adata[keep]
         else:
