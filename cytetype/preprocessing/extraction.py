@@ -2,6 +2,7 @@ import anndata
 import pandas as pd
 
 from ..config import logger
+from .validation import _extract_symbol_from_composite, clean_gene_names
 
 
 def extract_marker_genes(
@@ -46,9 +47,14 @@ def extract_marker_genes(
             )
 
     if gene_symbols_col is not None:
-        gene_ids_to_name = adata.var[gene_symbols_col].to_dict()
+        raw_map = adata.var[gene_symbols_col].to_dict()
+        gene_ids_to_name = {
+            k: _extract_symbol_from_composite(str(v)) for k, v in raw_map.items()
+        }
     else:
-        gene_ids_to_name = dict(zip(adata.var_names, adata.var_names))
+        raw_names = adata.var_names.tolist()
+        cleaned = clean_gene_names(raw_names)
+        gene_ids_to_name = dict(zip(adata.var_names, cleaned))
     markers = {}
     any_genes_found = False
 

@@ -16,6 +16,7 @@ from .api.client import (
 from .preprocessing import (
     validate_adata,
     resolve_gene_symbols_column,
+    clean_gene_names,
     aggregate_expression_percentages,
     extract_marker_genes,
     aggregate_cluster_metadata,
@@ -161,6 +162,7 @@ class CyteType:
             if self.gene_symbols_column is not None
             else adata.var_names.tolist()
         )
+        gene_names = clean_gene_names(gene_names)
         self.expression_percentages = aggregate_expression_percentages(
             adata=adata,
             clusters=self.clusters,

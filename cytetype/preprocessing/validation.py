@@ -46,6 +46,35 @@ def _has_composite_gene_values(values: list[str]) -> bool:
     return len(values) > 0 and (composite_count / min(200, len(values))) > 0.5
 
 
+def _extract_symbol_from_composite(value: str) -> str:
+    parts = re.split(r"[_|]", value, maxsplit=1)
+    if len(parts) != 2:
+        return value
+    id_flags = [_is_gene_id_like(p) for p in parts]
+    if id_flags[0] and not id_flags[1]:
+        return parts[1]
+    if not id_flags[0] and id_flags[1]:
+        return parts[0]
+    return value
+
+
+def clean_gene_names(names: list[str]) -> list[str]:
+    """Extract gene symbols from composite gene name/ID values.
+
+    If >50% of values are composite (e.g. ``TSPAN6_ENSG00000000003``),
+    splits each value and returns the gene-symbol part.  Non-composite
+    lists are returned unchanged.
+    """
+    if not _has_composite_gene_values(names):
+        return names
+    cleaned = [_extract_symbol_from_composite(n) for n in names]
+    logger.info(
+        f"Cleaned {len(cleaned)} composite gene values "
+        f"(e.g., '{names[0]}' -> '{cleaned[0]}')."
+    )
+    return cleaned
+
+
 def _id_like_percentage(values: list[str]) -> float:
     if not values:
         return 100.0
@@ -97,6 +126,12 @@ def resolve_gene_symbols_column(
                 f"Available columns: {list(adata.var.columns)}. "
                 f"Set gene_symbols_column=None for auto-detection."
             )
+        values = adata.var[gene_symbols_column].dropna().astype(str).tolist()
+        if _has_composite_gene_values(values):
+            logger.info(
+                f"Column '{gene_symbols_column}' contains composite gene name/ID values "
+                f"(e.g., '{values[0]}'). Gene symbols will be extracted automatically."
+            )
         _validate_gene_symbols_column(adata, gene_symbols_column)
         logger.info(f"Using gene symbols from column '{gene_symbols_column}'.")
         return gene_symbols_column
@@ -119,20 +154,24 @@ def resolve_gene_symbols_column(
         values = adata.var[col].dropna().astype(str).tolist()
         if not values:
             continue
-        if _has_composite_gene_values(values):
-            logger.warning(
-                f"Column '{col}' appears to contain composite gene name/ID values "
-                f"(e.g., '{values[0]}'). Skipping."
-            )
-            continue
-        pct = _id_like_percentage(values)
-        unique_ratio = len(set(values)) / len(values)
+        score_values = (
+            [_extract_symbol_from_composite(v) for v in values]
+            if _has_composite_gene_values(values)
+            else values
+        )
+        pct = _id_like_percentage(score_values)
+        unique_ratio = len(set(score_values)) / len(score_values)
         candidates.append((col, pct, unique_ratio, 0))
 
     var_names_list = adata.var_names.astype(str).tolist()
     if var_names_list:
-        var_id_pct = _id_like_percentage(var_names_list)
-        var_unique_ratio = len(set(var_names_list)) / len(var_names_list)
+        var_score_values = (
+            [_extract_symbol_from_composite(v) for v in var_names_list]
+            if _has_composite_gene_values(var_names_list)
+            else var_names_list
+        )
+        var_id_pct = _id_like_percentage(var_score_values)
+        var_unique_ratio = len(set(var_score_values)) / len(var_score_values)
         candidates.append((None, var_id_pct, var_unique_ratio, 1))
 
     for col in adata.var.columns:
@@ -144,13 +183,16 @@ def resolve_gene_symbols_column(
             continue
         if not values:
             continue
-        if _has_composite_gene_values(values):
+        score_values = (
+            [_extract_symbol_from_composite(v) for v in values]
+            if _has_composite_gene_values(values)
+            else values
+        )
+        n_unique = len(set(score_values))
+        if n_unique < max(10, len(score_values) * 0.05):
             continue
-        n_unique = len(set(values))
-        if n_unique < max(10, len(values) * 0.05):
-            continue
-        pct = _id_like_percentage(values)
-        unique_ratio = n_unique / len(values)
+        pct = _id_like_percentage(score_values)
+        unique_ratio = n_unique / len(score_values)
         candidates.append((col, pct, unique_ratio, 2))
 
     viable = [c for c in candidates if c[1] < 50]
