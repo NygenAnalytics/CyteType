@@ -207,7 +207,7 @@ def test_cytetype_run_artifact_failure_continues_when_not_required(
 
 @patch("cytetype.main.wait_for_completion")
 @patch("cytetype.main.submit_annotation_job")
-def test_cytetype_run_cleanup_artifacts(
+def test_cytetype_cleanup_deletes_artifact_files(
     mock_submit: MagicMock,
     mock_wait: MagicMock,
     mock_adata: anndata.AnnData,
@@ -215,7 +215,7 @@ def test_cytetype_run_cleanup_artifacts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test run() can cleanup generated artifact files when requested."""
+    """Test cleanup() deletes the artifact files built during initialization."""
     mock_submit.return_value = "job_cleanup"
     mock_wait.return_value = mock_api_response
 
@@ -231,16 +231,23 @@ def test_cytetype_run_cleanup_artifacts(
     monkeypatch.setattr("cytetype.main.save_features_matrix", _save_vars)
     monkeypatch.setattr("cytetype.main.save_obs_duckdb_file", _save_obs)
 
-    ct = CyteType(mock_adata, group_key="leiden")
-    ct.run(
-        study_context="Test",
+    ct = CyteType(
+        mock_adata,
+        group_key="leiden",
         vars_h5_path=str(vars_path),
         obs_duckdb_path=str(obs_path),
-        cleanup_artifacts=True,
     )
+    ct.run(study_context="Test")
+
+    assert vars_path.exists()
+    assert obs_path.exists()
+
+    ct.cleanup()
 
     assert not vars_path.exists()
     assert not obs_path.exists()
+    assert ct._vars_h5_path is None
+    assert ct._obs_duckdb_path is None
 
 
 @patch("cytetype.main.wait_for_completion")

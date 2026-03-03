@@ -2,6 +2,7 @@ import anndata
 import pandas as pd
 
 from ..config import logger
+from .validation import _extract_symbol_from_composite, clean_gene_names
 
 
 def extract_marker_genes(
@@ -10,7 +11,7 @@ def extract_marker_genes(
     rank_genes_key: str,
     cluster_map: dict[str, str],
     n_top_genes: int,
-    gene_symbols_col: str,
+    gene_symbols_col: str | None,
 ) -> dict[str, list[str]]:
     """Extract top marker genes from rank_genes_groups results.
 
@@ -20,7 +21,8 @@ def extract_marker_genes(
         rank_genes_key: Key in adata.uns containing rank_genes_groups results
         cluster_map: Dictionary mapping original labels to cluster IDs
         n_top_genes: Number of top genes to extract per cluster
-        gene_symbols_col: Column in adata.var containing gene symbols
+        gene_symbols_col: Column in adata.var containing gene symbols,
+            or None to use var_names directly (identity mapping).
 
     Returns:
         Dictionary mapping cluster IDs to lists of marker gene symbols
@@ -44,7 +46,15 @@ def extract_marker_genes(
                 f"Failed to extract marker gene names from `rank_genes_groups`. Error: {e}"
             )
 
-    gene_ids_to_name = adata.var[gene_symbols_col].to_dict()
+    if gene_symbols_col is not None:
+        raw_map = adata.var[gene_symbols_col].to_dict()
+        gene_ids_to_name = {
+            k: _extract_symbol_from_composite(str(v)) for k, v in raw_map.items()
+        }
+    else:
+        raw_names = adata.var_names.tolist()
+        cleaned = clean_gene_names(raw_names)
+        gene_ids_to_name = dict(zip(adata.var_names, cleaned))
     markers = {}
     any_genes_found = False
 
@@ -123,8 +133,24 @@ def extract_visualization_coordinates(
     )
 
     # Sample cells from each group using pandas
+    unique_groups = coord_df["group"].unique()
+    try:
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=FutureWarning)
+            from tqdm.auto import tqdm
+
+        group_iter = tqdm(
+            unique_groups,
+            desc=f"Sampling coordinates from {coordinates_key}",
+            unit="group",
+        )
+    except ImportError:
+        group_iter = unique_groups
+
     sampled_coords = []
-    for group_label in coord_df["group"].unique():
+    for group_label in group_iter:
         group_mask = coord_df["group"] == group_label
         group_size = group_mask.sum()
         sample_size = min(max_cells_per_group, group_size)
@@ -133,12 +159,6 @@ def extract_visualization_coordinates(
             n=sample_size, random_state=random_state
         )
         sampled_coords.append(sampled_group)
-
-        if group_size > max_cells_per_group:
-            logger.info(
-                f"Sampled {sample_size} cells from group '{group_label}' "
-                f"(originally {group_size} cells)"
-            )
 
     # Concatenate all sampled groups
     sampled_coord_df: pd.DataFrame = pd.concat(sampled_coords, ignore_index=True)
@@ -152,9 +172,9 @@ def extract_visualization_coordinates(
         for label in sampled_coord_df["group"].values
     ]
 
-    logger.info(
-        f"Extracted {len(sampled_coordinates)} coordinate points "
-        f"(sampled from {len(coordinates)} total cells)"
-    )
+    # logger.info(
+    #     f"Extracted {len(sampled_coordinates)} coordinate points "
+    #     f"(sampled from {len(coordinates)} total cells)"
+    # )
 
     return sampled_coordinates, sampled_cluster_labels

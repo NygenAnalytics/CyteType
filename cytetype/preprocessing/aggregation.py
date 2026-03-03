@@ -1,41 +1,53 @@
 import anndata
 import numpy as np
-import pandas as pd
+
+from .marker_detection import _accumulate_group_stats
 
 
 def aggregate_expression_percentages(
-    adata: anndata.AnnData, clusters: list[str], batch_size: int, gene_names: list[str]
+    adata: anndata.AnnData,
+    clusters: list[str],
+    gene_names: list[str],
+    cell_batch_size: int = 5000,
 ) -> dict[str, dict[str, float]]:
     """Aggregate gene expression percentages per cluster.
+
+    Uses a single-pass row-batched accumulation (fast for CSR / backed data).
 
     Args:
         adata: AnnData object containing expression data
         clusters: List of cluster assignments for each cell
-        batch_size: Number of genes to process per batch (for memory efficiency)
         gene_names: List of gene names corresponding to columns in adata.X
+        cell_batch_size: Number of cells to process per chunk
 
     Returns:
         Dictionary mapping gene names to cluster-level expression percentages
     """
-    pcent = {}
-    n_genes = adata.shape[1]
+    unique_clusters = sorted(set(clusters))
+    n_groups = len(unique_clusters)
+    cluster_to_idx = {c: i for i, c in enumerate(unique_clusters)}
+    cell_group_indices = np.array([cluster_to_idx[c] for c in clusters])
 
-    for s in range(0, n_genes, batch_size):
-        e = min(s + batch_size, n_genes)
-        batch_data = adata.X[:, s:e]
-        if hasattr(batch_data, "toarray"):
-            batch_data = batch_data.toarray()
-        elif isinstance(batch_data, np.ndarray):
-            pass
-        else:
-            raise TypeError(
-                f"Unexpected data type in `adata.raw.X` slice: {type(batch_data)}"
-            )
+    stats = _accumulate_group_stats(
+        adata.X,
+        cell_group_indices,
+        n_groups,
+        adata.shape[1],
+        cell_batch_size=cell_batch_size,
+        compute_nnz=True,
+        progress_desc="Calculating expression percentages",
+    )
 
-        df = pd.DataFrame(batch_data > 0, columns=gene_names[s:e]) * 100
-        df["clusters"] = clusters
-        pcent.update(df.groupby("clusters").mean().round(2).to_dict())
-        del df, batch_data
+    with np.errstate(divide="ignore", invalid="ignore"):
+        pct_matrix = np.round(stats.nnz / stats.n[:, None] * 100, 2)
+    pct_matrix = np.nan_to_num(pct_matrix, nan=0.0)
+
+    pcent: dict[str, dict[str, float]] = {}
+    for gene_idx, name in enumerate(gene_names):
+        pcent[name] = {
+            unique_clusters[g_idx]: float(pct_matrix[g_idx, gene_idx])
+            for g_idx in range(n_groups)
+        }
     return pcent
 
 
