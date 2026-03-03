@@ -7,6 +7,7 @@ import anndata
 import numpy as np
 import pandas as pd
 from natsort import natsorted
+import scipy.sparse as sp
 from scipy.stats import ttest_ind_from_stats
 
 from ..config import logger
@@ -59,22 +60,45 @@ def _accumulate_group_stats(
     for start in chunk_iter:
         end = min(start + cell_batch_size, n_cells)
         chunk = X[start:end]
-        if hasattr(chunk, "toarray"):
-            chunk = chunk.toarray()
-        chunk = np.asarray(chunk, dtype=np.float64)
         chunk_labels = cell_group_indices[start:end]
-
         batch_len = end - start
-        indicator = np.zeros((n_groups, batch_len), dtype=np.float64)
-        indicator[chunk_labels, np.arange(batch_len)] = 1.0
 
-        n_ += indicator.sum(axis=1).astype(np.int64)
-        if sum_ is not None:
-            sum_ += indicator @ chunk
-        if sum_sq_ is not None:
-            sum_sq_ += indicator @ (chunk**2)
-        if nnz_ is not None:
-            nnz_ += (indicator @ (chunk != 0).astype(np.float64)).astype(np.int64)
+        if sp.issparse(chunk):
+            chunk = chunk.tocsr()
+
+            ind = sp.csr_matrix(
+                (np.ones(batch_len, dtype=np.float64),
+                 (chunk_labels, np.arange(batch_len))),
+                shape=(n_groups, batch_len),
+            )
+
+            n_ += np.asarray(ind.sum(axis=1), dtype=np.int64).ravel()
+            if sum_ is not None:
+                sum_ += np.asarray((ind @ chunk).toarray(), dtype=np.float64)
+            if sum_sq_ is not None:
+                sum_sq_ += np.asarray(
+                    (ind @ chunk.multiply(chunk)).toarray(), dtype=np.float64
+                )
+            if nnz_ is not None:
+                binary = chunk.copy()
+                binary.eliminate_zeros()
+                binary.data = np.ones_like(binary.data, dtype=np.float64)
+                nnz_ += np.asarray((ind @ binary).toarray(), dtype=np.int64)
+        else:
+            if hasattr(chunk, "toarray"):
+                chunk = chunk.toarray()
+            chunk = np.asarray(chunk, dtype=np.float64)
+
+            indicator = np.zeros((n_groups, batch_len), dtype=np.float64)
+            indicator[chunk_labels, np.arange(batch_len)] = 1.0
+
+            n_ += indicator.sum(axis=1).astype(np.int64)
+            if sum_ is not None:
+                sum_ += indicator @ chunk
+            if sum_sq_ is not None:
+                sum_sq_ += indicator @ (chunk ** 2)
+            if nnz_ is not None:
+                nnz_ += (indicator @ (chunk != 0).astype(np.float64)).astype(np.int64)
 
     return GroupStats(n=n_, nnz=nnz_, sum_=sum_, sum_sq=sum_sq_)
 
