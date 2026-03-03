@@ -118,8 +118,13 @@ def _is_integer_valued(mat: Any, sample_n_rows: int = 200) -> bool:
         return True
 
     n_rows = mat.shape[0]
-    row_end = min(sample_n_rows, n_rows)
-    chunk = mat[:row_end]
+    if n_rows <= sample_n_rows:
+        row_indices = np.arange(n_rows)
+    else:
+        rng = np.random.default_rng(42)
+        row_indices = np.sort(rng.choice(n_rows, size=sample_n_rows, replace=False))
+
+    chunk = mat[row_indices]
 
     if sp.issparse(chunk):
         sample = chunk.data
