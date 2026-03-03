@@ -67,8 +67,10 @@ def _accumulate_group_stats(
             chunk = chunk.tocsr()
 
             ind = sp.csr_matrix(
-                (np.ones(batch_len, dtype=np.float64),
-                 (chunk_labels, np.arange(batch_len))),
+                (
+                    np.ones(batch_len, dtype=np.float64),
+                    (chunk_labels, np.arange(batch_len)),
+                ),
                 shape=(n_groups, batch_len),
             )
 
@@ -96,7 +98,7 @@ def _accumulate_group_stats(
             if sum_ is not None:
                 sum_ += indicator @ chunk
             if sum_sq_ is not None:
-                sum_sq_ += indicator @ (chunk ** 2)
+                sum_sq_ += indicator @ (chunk**2)
             if nnz_ is not None:
                 nnz_ += (indicator @ (chunk != 0).astype(np.float64)).astype(np.int64)
 
