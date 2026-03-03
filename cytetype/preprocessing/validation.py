@@ -1,4 +1,6 @@
+import random
 import re
+
 import anndata
 
 from ..config import logger
@@ -19,7 +21,7 @@ def _is_gene_id_like(value: str) -> bool:
 
     value = value.strip()
 
-    if re.match(r"^ENS[A-Z]*G\d{11}$", value, re.IGNORECASE):
+    if re.match(r"^ENS[A-Z]*G\d{11}(\.\d+)?$", value, re.IGNORECASE):
         return True
 
     if re.match(r"^[NX][MR]_\d+$", value):
@@ -75,11 +77,15 @@ def clean_gene_names(names: list[str]) -> list[str]:
     return cleaned
 
 
-def _id_like_percentage(values: list[str]) -> float:
+def _id_like_percentage(values: list[str], seed: int = 42) -> float:
     if not values:
         return 100.0
-    n = min(500, len(values))
-    sample = values[:n]
+    n = min(2000, len(values))
+    if n < len(values):
+        rng = random.Random(seed)
+        sample = rng.sample(values, n)
+    else:
+        sample = values
     return sum(1 for v in sample if _is_gene_id_like(v)) / n * 100
 
 

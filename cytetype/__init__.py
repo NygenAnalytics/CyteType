@@ -1,4 +1,4 @@
-__version__ = "0.18.0"
+__version__ = "0.18.1"
 
 import requests
 
@@ -8,7 +8,12 @@ from .plotting import marker_dotplot
 from .preprocessing.marker_detection import rank_genes_groups_backed
 from .preprocessing.subsampling import subsample_by_group
 
-__all__ = ["CyteType", "marker_dotplot", "rank_genes_groups_backed", "subsample_by_group"]
+__all__ = [
+    "CyteType",
+    "marker_dotplot",
+    "rank_genes_groups_backed",
+    "subsample_by_group",
+]
 
 _PYPI_JSON_URL = "https://pypi.org/pypi/cytetype/json"
 
