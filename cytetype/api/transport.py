@@ -1,7 +1,7 @@
 import requests
 from typing import Any, BinaryIO
 
-from .exceptions import create_api_exception, NetworkError, TimeoutError
+from .exceptions import create_api_exception, APIError, NetworkError, TimeoutError
 from .schemas import ErrorResponse
 
 
@@ -138,6 +138,12 @@ class HTTPTransport:
                 headers={"Content-Type": "application/octet-stream"},
                 timeout=timeout,
             )
+            if 400 <= response.status_code < 500:
+                raise APIError(
+                    f"Presigned URL upload rejected (HTTP {response.status_code}): "
+                    f"{response.text[:200]}",
+                    error_code="PRESIGNED_URL_REJECTED",
+                )
             response.raise_for_status()
             etag = response.headers.get("ETag")
             if not etag:
