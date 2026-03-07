@@ -56,7 +56,11 @@ def _upload_file(
     transport = HTTPTransport(base_url, auth_token)
 
     # Step 1 – Initiate chunked upload
-    _, init_data = transport.post_empty(f"upload/{file_kind}/initiate", timeout=timeout)
+    _, init_data = transport.post_json(
+        f"upload/{file_kind}/initiate",
+        data={"file_size_bytes": size_bytes},
+        timeout=timeout,
+    )
     upload_id: str = init_data["upload_id"]
     chunk_size: int = init_data["chunk_size_bytes"]
 
@@ -73,10 +77,10 @@ def _upload_file(
     r2_upload_id: str | None = init_data.get("r2_upload_id")
     use_r2 = presigned_urls is not None and r2_upload_id is not None
 
-    if use_r2 and len(presigned_urls) != n_chunks:  # type: ignore[arg-type]
+    if use_r2 and len(presigned_urls) < n_chunks:  # type: ignore[arg-type]
         raise ValueError(
             f"Server returned {len(presigned_urls)} presigned URLs "  # type: ignore[arg-type]
-            f"but expected {n_chunks} (one per chunk)."
+            f"but need at least {n_chunks} (one per chunk)."
         )
 
     # Step 2 – Upload chunks in parallel.
