@@ -124,6 +124,48 @@ class HTTPTransport:
             self._handle_request_error(e)
             raise  # For type checker
 
+    def put_to_presigned_url(
+        self,
+        url: str,
+        data: bytes,
+        timeout: float | tuple[float, float] = (30.0, 3600.0),
+    ) -> str:
+        """PUT raw bytes to a presigned URL. Returns the ETag header."""
+        try:
+            response = self.session.put(
+                url,
+                data=data,
+                headers={"Content-Type": "application/octet-stream"},
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            return response.headers.get("ETag", "")
+        except requests.RequestException as e:
+            self._handle_request_error(e)
+            raise
+
+    def post_json(
+        self,
+        endpoint: str,
+        data: dict[str, Any],
+        timeout: float | tuple[float, float] = 30.0,
+    ) -> tuple[int, dict[str, Any]]:
+        """Make POST request with JSON body."""
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        try:
+            response = self.session.post(
+                url,
+                json=data,
+                headers=self._build_headers(content_type="application/json"),
+                timeout=timeout,
+            )
+            if not response.ok:
+                self._parse_error(response)
+            return response.status_code, response.json()
+        except requests.RequestException as e:
+            self._handle_request_error(e)
+            raise
+
     def get(self, endpoint: str, timeout: int = 30) -> tuple[int, dict[str, Any]]:
         """Make GET request and return (status_code, data)."""
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
