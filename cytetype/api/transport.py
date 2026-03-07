@@ -1,7 +1,7 @@
 import requests
 from typing import Any, BinaryIO
 
-from .exceptions import create_api_exception, NetworkError, TimeoutError
+from .exceptions import create_api_exception, APIError, NetworkError, TimeoutError
 from .schemas import ErrorResponse
 
 
@@ -123,6 +123,60 @@ class HTTPTransport:
         except requests.RequestException as e:
             self._handle_request_error(e)
             raise  # For type checker
+
+    def put_to_presigned_url(
+        self,
+        url: str,
+        data: bytes,
+        timeout: float | tuple[float, float] = (30.0, 3600.0),
+    ) -> str:
+        """PUT raw bytes to a presigned URL. Returns the ETag header."""
+        try:
+            response = self.session.put(
+                url,
+                data=data,
+                headers={"Content-Type": "application/octet-stream"},
+                timeout=timeout,
+            )
+            if 400 <= response.status_code < 500:
+                raise APIError(
+                    f"Presigned URL upload rejected (HTTP {response.status_code}): "
+                    f"{response.text[:200]}",
+                    error_code="PRESIGNED_URL_REJECTED",
+                )
+            response.raise_for_status()
+            etag = response.headers.get("ETag")
+            if not etag:
+                raise NetworkError(
+                    "Presigned URL PUT succeeded but response is missing the ETag header",
+                    error_code="MISSING_ETAG",
+                )
+            return etag
+        except requests.RequestException as e:
+            self._handle_request_error(e)
+            raise
+
+    def post_json(
+        self,
+        endpoint: str,
+        data: dict[str, Any],
+        timeout: float | tuple[float, float] = 30.0,
+    ) -> tuple[int, dict[str, Any]]:
+        """Make POST request with JSON body."""
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        try:
+            response = self.session.post(
+                url,
+                json=data,
+                headers=self._build_headers(content_type="application/json"),
+                timeout=timeout,
+            )
+            if not response.ok:
+                self._parse_error(response)
+            return response.status_code, response.json()
+        except requests.RequestException as e:
+            self._handle_request_error(e)
+            raise
 
     def get(self, endpoint: str, timeout: int = 30) -> tuple[int, dict[str, Any]]:
         """Make GET request and return (status_code, data)."""
