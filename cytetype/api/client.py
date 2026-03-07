@@ -73,6 +73,12 @@ def _upload_file(
     r2_upload_id: str | None = init_data.get("r2_upload_id")
     use_r2 = presigned_urls is not None and r2_upload_id is not None
 
+    if use_r2 and len(presigned_urls) != n_chunks:  # type: ignore[arg-type]
+        raise ValueError(
+            f"Server returned {len(presigned_urls)} presigned URLs "  # type: ignore[arg-type]
+            f"but expected {n_chunks} (one per chunk)."
+        )
+
     # Step 2 – Upload chunks in parallel.
     # Each worker thread gets its own HTTPTransport (and thus its own
     # requests.Session / connection pool) for thread safety.
