@@ -139,7 +139,13 @@ class HTTPTransport:
                 timeout=timeout,
             )
             response.raise_for_status()
-            return response.headers.get("ETag", "")
+            etag = response.headers.get("ETag")
+            if not etag:
+                raise NetworkError(
+                    "Presigned URL PUT succeeded but response is missing the ETag header",
+                    error_code="MISSING_ETAG",
+                )
+            return etag
         except requests.RequestException as e:
             self._handle_request_error(e)
             raise
