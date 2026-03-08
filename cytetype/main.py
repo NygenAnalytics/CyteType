@@ -84,6 +84,7 @@ class CyteType:
         max_cells_per_group: int = 1000,
         vars_h5_path: str = "vars.h5",
         obs_duckdb_path: str = "obs.duckdb",
+        max_metadata_categories: int = 500,
         api_url: str = "https://prod.cytetype.nygen.io",
         auth_token: str | None = None,
     ) -> None:
@@ -116,6 +117,10 @@ class CyteType:
             max_cells_per_group (int, optional): Maximum number of cells to sample per group
                 for visualization. If a group has more cells than this limit, a random sample
                 will be taken. Defaults to 1000.
+            max_metadata_categories (int, optional): Maximum number of unique values a categorical
+                obs column may have to be included in cluster metadata aggregation. Columns with
+                more unique values (e.g. cell barcodes, per-cell IDs) are skipped to avoid
+                excessive memory usage. Defaults to 500.
             api_url (str, optional): URL for the CyteType API endpoint. Only change if using a custom
                 deployment. Defaults to "https://prod.cytetype.nygen.io".
             auth_token (str | None, optional): Bearer token for API authentication. If provided,
@@ -186,6 +191,7 @@ class CyteType:
                 adata=self.adata,
                 group_key=self.group_key,
                 min_percentage=min_percentage,
+                max_categories=max_metadata_categories,
             )
             # Replace keys in group_metadata using cluster_map
             self.group_metadata = {

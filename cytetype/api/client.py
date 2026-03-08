@@ -13,7 +13,7 @@ from ..config import logger
 
 
 MAX_UPLOAD_BYTES: dict[UploadFileKind, int] = {
-    "obs_duckdb": 100 * 1024 * 1024,  # 100MB
+    "obs_duckdb": 2 * 1024 * 1024 * 1024,  # 2GB
     "vars_h5": 50 * 1024 * 1024 * 1024,  # 10GB
 }
 
