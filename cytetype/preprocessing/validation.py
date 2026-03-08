@@ -13,6 +13,7 @@ _KNOWN_GENE_SYMBOL_COLUMNS = [
     "gene_name",
     "symbol",
 ]
+_CANONICAL_GENE_SYMBOLS_COLUMN = "__cytetype_gene_symbols"
 
 
 def _is_gene_id_like(value: str) -> bool:
@@ -75,6 +76,38 @@ def clean_gene_names(names: list[str]) -> list[str]:
         f"(e.g., '{names[0]}' -> '{cleaned[0]}')."
     )
     return cleaned
+
+
+def _temporary_gene_symbols_column_name(adata: anndata.AnnData) -> str:
+    candidate = _CANONICAL_GENE_SYMBOLS_COLUMN
+    suffix = 1
+    while candidate in adata.var.columns:
+        candidate = f"{_CANONICAL_GENE_SYMBOLS_COLUMN}_{suffix}"
+        suffix += 1
+    return candidate
+
+
+def materialize_canonical_gene_symbols_column(
+    adata: anndata.AnnData, gene_symbols_column: str | None
+) -> tuple[str, str | None]:
+    """Create a temporary canonical gene-symbol column in ``adata.var``."""
+    if gene_symbols_column is None:
+        source_values = adata.var_names.astype(str).tolist()
+        source_name = "adata.var_names"
+    else:
+        source_values = [
+            str(value)
+            for value in adata.var[gene_symbols_column].astype("string").fillna("")
+        ]
+        source_name = f"column '{gene_symbols_column}'"
+
+    canonical_column = _temporary_gene_symbols_column_name(adata)
+    adata.var[canonical_column] = clean_gene_names(source_values)
+    logger.info(
+        f"Materialized canonical gene symbols in temporary column '{canonical_column}' "
+        f"from {source_name}."
+    )
+    return canonical_column, gene_symbols_column
 
 
 def _id_like_percentage(values: list[str], seed: int = 42) -> float:

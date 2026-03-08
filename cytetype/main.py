@@ -16,12 +16,12 @@ from .api.client import (
 from .preprocessing import (
     validate_adata,
     resolve_gene_symbols_column,
-    clean_gene_names,
     aggregate_expression_percentages,
     extract_marker_genes,
     aggregate_cluster_metadata,
     extract_visualization_coordinates,
 )
+from .preprocessing.validation import materialize_canonical_gene_symbols_column
 from .core.payload import build_annotation_payload, save_query_to_file
 from .core.artifacts import (
     _is_integer_valued,
@@ -140,136 +140,163 @@ class CyteType:
         self.api_url = api_url
         self.auth_token = auth_token
         self._artifact_build_errors: list[tuple[str, Exception]] = []
+        self._vars_h5_path: str | None = None
+        self._obs_duckdb_path: str | None = None
+        self._original_gene_symbols_column: str | None = None
+        self._temporary_gene_symbols_column: str | None = None
 
-        self.gene_symbols_column = resolve_gene_symbols_column(
-            adata, gene_symbols_column
-        )
+        try:
+            self.gene_symbols_column = resolve_gene_symbols_column(
+                adata, gene_symbols_column
+            )
+            self._original_gene_symbols_column = self.gene_symbols_column
 
-        self.coordinates_key = validate_adata(
-            adata, group_key, rank_key, self.gene_symbols_column, coordinates_key
-        )
+            self.coordinates_key = validate_adata(
+                adata, group_key, rank_key, self.gene_symbols_column, coordinates_key
+            )
+            (
+                self.gene_symbols_column,
+                self._original_gene_symbols_column,
+            ) = materialize_canonical_gene_symbols_column(
+                adata, self.gene_symbols_column
+            )
+            self._temporary_gene_symbols_column = self.gene_symbols_column
 
-        # Use original labels as IDs if all are short (<=3 chars), otherwise enumerate
-        _unique_group_categories: list[str | int] = natsorted(
-            adata.obs[group_key].unique().tolist()
-        )
-        _short_ids = all(len(str(x)) <= 3 for x in _unique_group_categories)
-        self.cluster_map = {
-            str(x): str(x) if _short_ids else str(n)
-            for n, x in enumerate(_unique_group_categories)
-        }
-        self.clusters = [
-            self.cluster_map[str(x)] for x in adata.obs[group_key].values.tolist()
-        ]
+            # Use original labels as IDs if all are short (<=3 chars), otherwise enumerate
+            _unique_group_categories: list[str | int] = natsorted(
+                adata.obs[group_key].unique().tolist()
+            )
+            _short_ids = all(len(str(x)) <= 3 for x in _unique_group_categories)
+            self.cluster_map = {
+                str(x): str(x) if _short_ids else str(n)
+                for n, x in enumerate(_unique_group_categories)
+            }
+            self.clusters = [
+                self.cluster_map[str(x)] for x in adata.obs[group_key].values.tolist()
+            ]
 
-        gene_names = (
-            adata.var[self.gene_symbols_column].tolist()
-            if self.gene_symbols_column is not None
-            else adata.var_names.tolist()
-        )
-        gene_names = clean_gene_names(gene_names)
-        self.expression_percentages = aggregate_expression_percentages(
-            adata=adata,
-            clusters=self.clusters,
-            gene_names=gene_names,
-            cell_batch_size=pcent_batch_size,
-        )
+            gene_names = adata.var[self.gene_symbols_column].tolist()
+            self.expression_percentages = aggregate_expression_percentages(
+                adata=adata,
+                clusters=self.clusters,
+                gene_names=gene_names,
+                cell_batch_size=pcent_batch_size,
+            )
 
-        logger.info("Extracting marker genes...")
-        self.marker_genes = extract_marker_genes(
-            adata=self.adata,
-            cell_group_key=self.group_key,
-            rank_genes_key=self.rank_key,
-            cluster_map=self.cluster_map,
-            n_top_genes=n_top_genes,
-            gene_symbols_col=self.gene_symbols_column,
-        )
-
-        if aggregate_metadata:
-            logger.info("Aggregating cluster metadata...")
-            self.group_metadata = aggregate_cluster_metadata(
+            logger.info("Extracting marker genes...")
+            self.marker_genes = extract_marker_genes(
                 adata=self.adata,
-                group_key=self.group_key,
-                min_percentage=min_percentage,
-                max_categories=max_metadata_categories,
+                cell_group_key=self.group_key,
+                rank_genes_key=self.rank_key,
+                cluster_map=self.cluster_map,
+                n_top_genes=n_top_genes,
+                gene_symbols_col=self.gene_symbols_column,
             )
-            # Replace keys in group_metadata using cluster_map
-            self.group_metadata = {
-                self.cluster_map.get(str(key), str(key)): value
-                for key, value in self.group_metadata.items()
+
+            if aggregate_metadata:
+                logger.info("Aggregating cluster metadata...")
+                self.group_metadata = aggregate_cluster_metadata(
+                    adata=self.adata,
+                    group_key=self.group_key,
+                    min_percentage=min_percentage,
+                    max_categories=max_metadata_categories,
+                )
+                # Replace keys in group_metadata using cluster_map
+                self.group_metadata = {
+                    self.cluster_map.get(str(key), str(key)): value
+                    for key, value in self.group_metadata.items()
+                }
+                self.group_metadata = {
+                    k: self.group_metadata[k]
+                    for k in sorted(self.group_metadata.keys())
+                }
+            else:
+                self.group_metadata = {}
+
+            # Prepare visualization data with sampling
+            sampled_coordinates, sampled_cluster_labels = (
+                extract_visualization_coordinates(
+                    adata=adata,
+                    coordinates_key=self.coordinates_key,
+                    group_key=self.group_key,
+                    cluster_map=self.cluster_map,
+                    max_cells_per_group=self.max_cells_per_group,
+                )
+            )
+
+            self.visualization_data = {
+                "coordinates": sampled_coordinates,
+                "clusters": sampled_cluster_labels,
             }
-            self.group_metadata = {
-                k: self.group_metadata[k] for k in sorted(self.group_metadata.keys())
-            }
-        else:
-            self.group_metadata = {}
 
-        # Prepare visualization data with sampling
-        sampled_coordinates, sampled_cluster_labels = extract_visualization_coordinates(
-            adata=adata,
-            coordinates_key=self.coordinates_key,
-            group_key=self.group_key,
-            cluster_map=self.cluster_map,
-            max_cells_per_group=self.max_cells_per_group,
-        )
+            # Resolve raw counts once and cache
+            self._raw_counts_result = self._resolve_raw_counts()
+            if self._raw_counts_result is None:
+                logger.warning(
+                    "No integer raw counts found in adata.layers['counts'], "
+                    "adata.raw.X, or adata.X. Skipping raw counts in vars.h5."
+                )
 
-        self.visualization_data = {
-            "coordinates": sampled_coordinates,
-            "clusters": sampled_cluster_labels,
-        }
+            # Build vars.h5
+            try:
+                raw_mat, raw_col_indices = (
+                    self._raw_counts_result
+                    if self._raw_counts_result is not None
+                    else (None, None)
+                )
+                save_features_matrix(
+                    out_file=vars_h5_path,
+                    mat=self.adata.X,
+                    var_df=self.adata.var,
+                    var_names=self.adata.var_names,
+                    raw_mat=raw_mat,
+                    raw_col_indices=raw_col_indices,
+                    gene_symbols_column=self.gene_symbols_column,
+                )
+                sys.stderr.flush()
+                self._vars_h5_path = vars_h5_path
+            except Exception as exc:
+                logger.warning(f"vars.h5 artifact failed during build: {exc}")
+                self._artifact_build_errors.append(("vars_h5", exc))
 
-        # Resolve raw counts once and cache
-        self._raw_counts_result = self._resolve_raw_counts()
-        if self._raw_counts_result is None:
-            logger.warning(
-                "No integer raw counts found in adata.layers['counts'], "
-                "adata.raw.X, or adata.X. Skipping raw counts in vars.h5."
+            # Build obs.duckdb
+            try:
+                logger.info("Writing obs data to duckdb artifact...")
+                obsm_coordinates = (
+                    self.adata.obsm[self.coordinates_key]
+                    if self.coordinates_key and self.coordinates_key in self.adata.obsm
+                    else None
+                )
+                save_obs_duckdb_file(
+                    out_file=obs_duckdb_path,
+                    obs_df=self.adata.obs,
+                    obsm_coordinates=obsm_coordinates,
+                    coordinates_key=self.coordinates_key,
+                )
+                sys.stderr.flush()
+                self._obs_duckdb_path = obs_duckdb_path
+            except Exception as exc:
+                logger.warning(f"obs.duckdb artifact failed during build: {exc}")
+                self._artifact_build_errors.append(("obs_duckdb", exc))
+
+            logger.info("Data preparation completed. Ready for submitting jobs.")
+        except Exception:
+            self._cleanup_temporary_gene_symbols_column()
+            raise
+
+    def _cleanup_temporary_gene_symbols_column(self) -> None:
+        temp_column = self._temporary_gene_symbols_column
+        if temp_column is None:
+            return
+
+        if temp_column in self.adata.var.columns:
+            del self.adata.var[temp_column]
+            logger.info(
+                f"Deleted temporary canonical gene-symbol column '{temp_column}'."
             )
 
-        # Build vars.h5
-        try:
-            raw_mat, raw_col_indices = (
-                self._raw_counts_result
-                if self._raw_counts_result is not None
-                else (None, None)
-            )
-            save_features_matrix(
-                out_file=vars_h5_path,
-                mat=self.adata.X,
-                var_df=self.adata.var,
-                var_names=self.adata.var_names,
-                raw_mat=raw_mat,
-                raw_col_indices=raw_col_indices,
-            )
-            sys.stderr.flush()
-            self._vars_h5_path: str | None = vars_h5_path
-        except Exception as exc:
-            logger.warning(f"vars.h5 artifact failed during build: {exc}")
-            self._vars_h5_path = None
-            self._artifact_build_errors.append(("vars_h5", exc))
-
-        # Build obs.duckdb
-        try:
-            logger.info("Writing obs data to duckdb artifact...")
-            obsm_coordinates = (
-                self.adata.obsm[self.coordinates_key]
-                if self.coordinates_key and self.coordinates_key in self.adata.obsm
-                else None
-            )
-            save_obs_duckdb_file(
-                out_file=obs_duckdb_path,
-                obs_df=self.adata.obs,
-                obsm_coordinates=obsm_coordinates,
-                coordinates_key=self.coordinates_key,
-            )
-            sys.stderr.flush()
-            self._obs_duckdb_path: str | None = obs_duckdb_path
-        except Exception as exc:
-            logger.warning(f"obs.duckdb artifact failed during build: {exc}")
-            self._obs_duckdb_path = None
-            self._artifact_build_errors.append(("obs_duckdb", exc))
-
-        logger.info("Data preparation completed. Ready for submitting jobs.")
+        self.gene_symbols_column = self._original_gene_symbols_column
+        self._temporary_gene_symbols_column = None
 
     def _resolve_raw_counts(
         self,
@@ -356,7 +383,8 @@ class CyteType:
         """Delete the artifact files built during initialization.
 
         Call this after run() completes to remove the vars.h5 and obs.duckdb
-        files from disk. Paths are cleared so repeated calls are safe.
+        files from disk and drop the temporary canonical gene-symbol column.
+        Paths are cleared so repeated calls are safe.
         """
         for attr, path in [
             ("_vars_h5_path", self._vars_h5_path),
@@ -369,6 +397,8 @@ class CyteType:
                 except OSError as exc:
                     logger.warning(f"Failed to delete artifact {path}: {exc}")
                 setattr(self, attr, None)
+
+        self._cleanup_temporary_gene_symbols_column()
 
     def run(
         self,

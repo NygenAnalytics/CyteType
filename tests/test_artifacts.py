@@ -19,6 +19,7 @@ def test_save_features_matrix_writes_var_metadata(
         mat=mock_adata.X,
         var_df=mock_adata.var,
         var_names=mock_adata.var_names,
+        gene_symbols_column="gene_symbols",
         col_batch=10,
     )
 
@@ -29,12 +30,50 @@ def test_save_features_matrix_writes_var_metadata(
         assert "columns" in f["info/var"]
         assert len(f["info/var/var_names"]) == mock_adata.n_vars
         assert len(f["info/var/index"]) == mock_adata.n_vars
+        assert f["info/var"].attrs["gene_symbols_column"] == "gene_symbols"
 
         columns_group = f["info/var/columns"]
         assert len(columns_group.keys()) == mock_adata.var.shape[1]
         for dataset in columns_group.values():
             assert "source_name" in dataset.attrs
             assert "source_dtype" in dataset.attrs
+
+
+def test_save_features_matrix_omits_gene_symbols_attr_when_not_provided(
+    tmp_path: Path,
+    mock_adata: anndata.AnnData,
+) -> None:
+    out_path = tmp_path / "vars.h5"
+
+    save_features_matrix(
+        out_file=str(out_path),
+        mat=mock_adata.X,
+        var_df=mock_adata.var,
+        var_names=mock_adata.var_names,
+        gene_symbols_column=None,
+        col_batch=10,
+    )
+
+    with h5py.File(out_path, "r") as f:
+        assert "gene_symbols_column" not in f["info/var"].attrs
+
+
+def test_save_features_matrix_omits_gene_symbols_attr_when_omitted(
+    tmp_path: Path,
+    mock_adata: anndata.AnnData,
+) -> None:
+    out_path = tmp_path / "vars.h5"
+
+    save_features_matrix(
+        out_file=str(out_path),
+        mat=mock_adata.X,
+        var_df=mock_adata.var,
+        var_names=mock_adata.var_names,
+        col_batch=10,
+    )
+
+    with h5py.File(out_path, "r") as f:
+        assert "gene_symbols_column" not in f["info/var"].attrs
 
 
 def test_save_features_matrix_writes_raw_group(
