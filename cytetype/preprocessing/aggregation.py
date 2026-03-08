@@ -1,6 +1,7 @@
 import anndata
 import numpy as np
 
+from ..config import logger
 from .marker_detection import _accumulate_group_stats
 
 
@@ -55,6 +56,7 @@ def aggregate_cluster_metadata(
     adata: anndata.AnnData,
     group_key: str,
     min_percentage: int = 10,
+    max_categories: int = 500,
 ) -> dict[str, dict[str, dict[str, int]]]:
     """Aggregate categorical metadata per cluster.
 
@@ -66,6 +68,9 @@ def aggregate_cluster_metadata(
         adata: AnnData object containing single-cell data
         group_key: Column name in adata.obs to group cells by
         min_percentage: Minimum percentage of cells in a group to include
+        max_categories: Maximum number of unique values a column may have to be
+            included. Columns exceeding this threshold are skipped to avoid
+            memory-expensive intermediate DataFrames.
 
     Returns:
         Nested dictionary structure:
@@ -76,14 +81,22 @@ def aggregate_cluster_metadata(
     grouped_data = adata.obs.groupby(group_key, observed=False)
     column_distributions: dict[str, dict[str, dict[str, int]]] = {}
 
-    # Process each column in adata.obs
     for column_name in adata.obs.columns:
         if column_name == group_key:
             continue
 
         column_dtype = adata.obs[column_name].dtype
         if column_dtype in ["object", "category", "string"]:
-            # Calculate value counts for each group
+            n_unique = adata.obs[column_name].nunique()
+            if n_unique > max_categories:
+                logger.debug(
+                    "Skipping column '{}' ({} unique values > max_categories={}).",
+                    column_name,
+                    n_unique,
+                    max_categories,
+                )
+                continue
+
             value_counts_df = grouped_data[column_name].value_counts().unstack().T
 
             # Convert to percentages and filter for values >min_percentage

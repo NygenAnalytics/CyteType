@@ -491,16 +491,23 @@ def save_obs_duckdb(
             "Invalid table_name. Use letters, numbers, and underscores only."
         )
 
+    added_cols: list[str] = []
     if obsm_coordinates is not None and coordinates_key is not None:
-        obs_df = obs_df.copy()
-        obs_df[f"__vis_coordinates_{coordinates_key}_1"] = obsm_coordinates[:, 0]
-        obs_df[f"__vis_coordinates_{coordinates_key}_2"] = obsm_coordinates[:, 1]
+        col1 = f"__vis_coordinates_{coordinates_key}_1"
+        col2 = f"__vis_coordinates_{coordinates_key}_2"
+        obs_df[col1] = obsm_coordinates[:, 0]
+        obs_df[col2] = obsm_coordinates[:, 1]
+        added_cols = [col1, col2]
 
     dd_config: dict[str, Any] = {
         "threads": threads,
         "memory_limit": memory_limit,
         "temp_directory": temp_directory,
     }
-    with duckdb.connect(out_file, config=dd_config) as con:
-        con.register("obs_df", obs_df)
-        con.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM obs_df")
+    try:
+        with duckdb.connect(out_file, config=dd_config) as con:
+            con.register("obs_df", obs_df)
+            con.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM obs_df")
+    finally:
+        for col in added_cols:
+            obs_df.drop(columns=col, inplace=True, errors="ignore")
