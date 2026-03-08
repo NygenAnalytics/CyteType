@@ -40,6 +40,7 @@ def _write_var_metadata(
     n_cols: int,
     var_df: pd.DataFrame,
     var_names: pd.Index | Sequence[Any] | None,
+    gene_symbols_column: str | None = None,
 ) -> None:
     if len(var_df) != n_cols:
         raise ValueError(
@@ -68,6 +69,8 @@ def _write_var_metadata(
         data=_as_string_values(var_df.index),
         dtype=text_dtype,
     )
+    if gene_symbols_column is not None:
+        var_group.attrs["gene_symbols_column"] = gene_symbols_column
 
     columns_group = var_group.create_group("columns")
     for i, col_name in enumerate(var_df.columns):
@@ -414,6 +417,7 @@ def save_features_matrix(
     mat: Any,
     var_df: pd.DataFrame | None = None,
     var_names: pd.Index | Sequence[Any] | None = None,
+    gene_symbols_column: str | None = None,
     raw_mat: Any | None = None,
     raw_col_indices: "np.ndarray | None" = None,
     raw_cell_batch: int = 2000,
@@ -454,6 +458,7 @@ def save_features_matrix(
                 n_cols=n_cols,
                 var_df=var_df,
                 var_names=var_names,
+                gene_symbols_column=gene_symbols_column,
             )
 
         if raw_mat is not None:

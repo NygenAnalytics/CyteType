@@ -6,6 +6,7 @@ from unittest.mock import patch, MagicMock
 from pydantic import ValidationError
 from typing import Any
 import anndata
+import scanpy as sc
 
 from cytetype import CyteType
 from cytetype.api.exceptions import RateLimitError, AuthenticationError
@@ -31,7 +32,13 @@ def test_cytetype_initialization(mock_adata: anndata.AnnData) -> None:
     assert ct.adata is mock_adata
     assert ct.group_key == "leiden"
     assert ct.rank_key == "rank_genes_groups"
-    assert ct.gene_symbols_column == "gene_symbols"
+    assert ct.gene_symbols_column is not None
+    assert ct.gene_symbols_column.startswith("__cytetype_gene_symbols")
+    assert ct.gene_symbols_column in mock_adata.var.columns
+    assert (
+        mock_adata.var[ct.gene_symbols_column].tolist()
+        == mock_adata.var["gene_symbols"].tolist()
+    )
 
     # Verify data preparation completed
     assert len(ct.clusters) == len(mock_adata)
@@ -75,6 +82,57 @@ def mock_internal_artifact_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("cytetype.main.save_obs_duckdb_file", _save_obs)
     monkeypatch.setattr("cytetype.main.upload_obs_duckdb_file", _upload_obs)
     monkeypatch.setattr("cytetype.main.upload_vars_h5_file", _upload_vars)
+
+
+def test_cytetype_materializes_canonical_column_from_composite_source(
+    mock_adata: anndata.AnnData, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, Any] = {}
+    original_var_names = mock_adata.var_names.tolist()
+    mock_adata.var["gene_symbols"] = [
+        f"GENE{i}|{var_name}" for i, var_name in enumerate(original_var_names)
+    ]
+
+    def _save_vars(*args: Any, **kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr("cytetype.main.save_features_matrix", _save_vars)
+
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    assert ct.gene_symbols_column is not None
+    assert ct.gene_symbols_column.startswith("__cytetype_gene_symbols")
+    assert mock_adata.var[ct.gene_symbols_column].tolist() == [
+        f"GENE{i}" for i in range(mock_adata.n_vars)
+    ]
+    assert captured["gene_symbols_column"] == ct.gene_symbols_column
+
+
+def test_cytetype_materializes_canonical_column_from_composite_var_names(
+    mock_adata: anndata.AnnData, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, Any] = {}
+    original_var_names = mock_adata.var_names.tolist()
+    expected_gene_names = [f"GENE{i}" for i in range(mock_adata.n_vars)]
+
+    mock_adata.var = mock_adata.var.drop(columns=["gene_symbols"])
+    mock_adata.var_names = [
+        f"{var_name}|{gene_name}"
+        for var_name, gene_name in zip(original_var_names, expected_gene_names)
+    ]
+    sc.tl.rank_genes_groups(mock_adata, "leiden", method="t-test")
+
+    def _save_vars(*args: Any, **kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr("cytetype.main.save_features_matrix", _save_vars)
+
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    assert ct.gene_symbols_column is not None
+    assert ct.gene_symbols_column.startswith("__cytetype_gene_symbols")
+    assert mock_adata.var[ct.gene_symbols_column].tolist() == expected_gene_names
+    assert captured["gene_symbols_column"] == ct.gene_symbols_column
 
 
 @patch("cytetype.main.wait_for_completion")
@@ -241,6 +299,9 @@ def test_cytetype_cleanup_deletes_artifact_files(
 
     assert vars_path.exists()
     assert obs_path.exists()
+    assert ct.gene_symbols_column is not None
+    assert ct.gene_symbols_column.startswith("__cytetype_gene_symbols")
+    assert ct.gene_symbols_column in ct.adata.var.columns
 
     ct.cleanup()
 
@@ -248,6 +309,29 @@ def test_cytetype_cleanup_deletes_artifact_files(
     assert not obs_path.exists()
     assert ct._vars_h5_path is None
     assert ct._obs_duckdb_path is None
+    assert "__cytetype_gene_symbols" not in ct.adata.var.columns
+    assert not any(
+        col.startswith("__cytetype_gene_symbols") for col in ct.adata.var.columns
+    )
+    assert ct.gene_symbols_column == "gene_symbols"
+
+
+def test_cytetype_init_failure_rolls_back_temporary_gene_symbols_column(
+    mock_adata: anndata.AnnData, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_columns = mock_adata.var.columns.tolist()
+    monkeypatch.setattr(
+        "cytetype.main.aggregate_expression_percentages",
+        MagicMock(side_effect=RuntimeError("aggregation failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="aggregation failed"):
+        CyteType(mock_adata, group_key="leiden")
+
+    assert mock_adata.var.columns.tolist() == original_columns
+    assert not any(
+        col.startswith("__cytetype_gene_symbols") for col in mock_adata.var.columns
+    )
 
 
 @patch("cytetype.main.wait_for_completion")
