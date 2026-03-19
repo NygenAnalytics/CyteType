@@ -275,6 +275,21 @@ def validate_adata(
 ) -> str | None:
     if cell_group_key not in adata.obs:
         raise KeyError(f"Cell group key '{cell_group_key}' not found in `adata.obs`.")
+
+    nan_mask = adata.obs[cell_group_key].isna()
+    n_nan = int(nan_mask.sum())
+    if n_nan > 0:
+        if n_nan == adata.n_obs:
+            raise ValueError(
+                f"All {n_nan} cells have NaN values in '{cell_group_key}'. "
+                f"Cannot proceed with annotation."
+            )
+        pct = round(100 * n_nan / adata.n_obs, 1)
+        logger.warning(
+            f"Dropping {n_nan} cells ({pct}%) with NaN values in '{cell_group_key}'."
+        )
+        adata._inplace_subset_obs(~nan_mask)
+
     if adata.X is None:
         raise ValueError(
             "`adata.X` is required for ranking genes. Please ensure it contains log1p normalized data."
