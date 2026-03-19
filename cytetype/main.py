@@ -87,6 +87,7 @@ class CyteType:
         max_metadata_categories: int = 500,
         api_url: str = "https://prod.cytetype.nygen.io",
         auth_token: str | None = None,
+        drop_na_cells: bool = False,
     ) -> None:
         """Initialize CyteType with AnnData object and perform data preparation.
 
@@ -152,7 +153,8 @@ class CyteType:
             self._original_gene_symbols_column = self.gene_symbols_column
 
             self.coordinates_key = validate_adata(
-                adata, group_key, rank_key, self.gene_symbols_column, coordinates_key
+                adata, group_key, rank_key, self.gene_symbols_column, coordinates_key,
+                drop_na_cells=drop_na_cells,
             )
             (
                 self.gene_symbols_column,
