@@ -292,7 +292,8 @@ def validate_adata(
                 f"Either fix the data or set drop_na_cells=True to exclude these cells."
             )
         logger.warning(
-            f"Dropping {n_nan} cells ({pct}%) with NaN values in '{cell_group_key}'."
+            f"⚠️  Dropping {n_nan} cells ({pct}%) with NaN values in '{cell_group_key}'. "
+            f"{adata.n_obs - n_nan} cells remaining."
         )
         adata._inplace_subset_obs(~nan_mask)
 
