@@ -279,7 +279,6 @@ def validate_adata(
 
     nan_mask = adata.obs[cell_group_key].isna()
     n_nan = int(nan_mask.sum())
-    _pending_nan_drop = False
     if n_nan > 0:
         pct = round(100 * n_nan / adata.n_obs, 1)
         if n_nan == adata.n_obs:
@@ -292,7 +291,6 @@ def validate_adata(
                 f"{n_nan} cells ({pct}%) have NaN values in '{cell_group_key}'. "
                 f"Either fix the data or set drop_na_cells=True to exclude these cells."
             )
-        _pending_nan_drop = True
 
     if adata.X is None:
         raise ValueError(
@@ -357,12 +355,5 @@ def validate_adata(
             f"Available keys: {available_keys}. "
             f"Visualization will be disabled."
         )
-
-    if _pending_nan_drop:
-        logger.warning(
-            f"⚠️  Dropping {n_nan} cells ({pct}%) with NaN values in '{cell_group_key}'. "
-            f"{adata.n_obs - n_nan} cells remaining."
-        )
-        adata._inplace_subset_obs(~nan_mask)
 
     return found_coordinates_key

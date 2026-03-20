@@ -159,6 +159,19 @@ class CyteType:
                 adata, group_key, rank_key, self.gene_symbols_column, coordinates_key,
                 drop_na_cells=drop_na_cells,
             )
+
+            if drop_na_cells:
+                nan_mask = adata.obs[group_key].isna()
+                if nan_mask.any():
+                    n_nan = int(nan_mask.sum())
+                    pct = round(100 * n_nan / adata.n_obs, 1)
+                    logger.warning(
+                        f"⚠️  Dropping {n_nan} cells ({pct}%) with NaN values in '{group_key}'. "
+                        f"{adata.n_obs - n_nan} cells remaining."
+                    )
+                    adata = adata[~nan_mask].copy()
+                    self.adata = adata
+
             (
                 self.gene_symbols_column,
                 self._original_gene_symbols_column,
