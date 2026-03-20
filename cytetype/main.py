@@ -189,9 +189,10 @@ class CyteType:
                         obsp=adata.obsp,
                         varp=adata.varp,
                     )
-                    adata.obs[group_key] = (
-                        adata.obs[group_key].fillna(na_label)
-                    )
+                    col = adata.obs[group_key]
+                    if hasattr(col, "cat"):
+                        col = col.cat.add_categories(na_label)
+                    adata.obs[group_key] = col.fillna(na_label)
                     self.adata = adata
 
             (
