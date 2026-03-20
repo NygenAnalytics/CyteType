@@ -126,6 +126,9 @@ class CyteType:
                 deployment. Defaults to "https://prod.cytetype.nygen.io".
             auth_token (str | None, optional): Bearer token for API authentication. If provided,
                 will be included in the Authorization header as "Bearer {auth_token}". Defaults to None.
+            drop_na_cells (bool, optional): If True, cells with NaN values in the
+                ``group_key`` column are dropped with a warning. If False (default),
+                a ``ValueError`` is raised instead.
 
         Raises:
             KeyError: If the required keys are missing in `adata.obs` or `adata.uns`
