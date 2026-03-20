@@ -21,7 +21,10 @@ from .preprocessing import (
     aggregate_cluster_metadata,
     extract_visualization_coordinates,
 )
-from .preprocessing.validation import materialize_canonical_gene_symbols_column
+from .preprocessing.validation import (
+    materialize_canonical_gene_symbols_column,
+    _generate_unique_na_label,
+)
 from .core.payload import build_annotation_payload, save_query_to_file
 from .core.artifacts import (
     _is_integer_valued,
@@ -87,7 +90,7 @@ class CyteType:
         max_metadata_categories: int = 500,
         api_url: str = "https://prod.cytetype.nygen.io",
         auth_token: str | None = None,
-        drop_na_cells: bool = False,
+        label_na: bool = False,
     ) -> None:
         """Initialize CyteType with AnnData object and perform data preparation.
 
@@ -126,9 +129,11 @@ class CyteType:
                 deployment. Defaults to "https://prod.cytetype.nygen.io".
             auth_token (str | None, optional): Bearer token for API authentication. If provided,
                 will be included in the Authorization header as "Bearer {auth_token}". Defaults to None.
-            drop_na_cells (bool, optional): If True, cells with NaN values in the
-                ``group_key`` column are dropped with a warning. If False (default),
-                a ``ValueError`` is raised instead.
+            label_na (bool, optional): If True, cells with NaN values in the
+                ``group_key`` column are assigned an ``'Unknown'`` cluster label
+                (or ``'Unknown 2'``, etc. if that label already exists). The original
+                AnnData object is not modified. If False (default), a ``ValueError``
+                is raised instead.
 
         Raises:
             KeyError: If the required keys are missing in `adata.obs` or `adata.uns`
@@ -157,19 +162,36 @@ class CyteType:
 
             self.coordinates_key = validate_adata(
                 adata, group_key, rank_key, self.gene_symbols_column, coordinates_key,
-                drop_na_cells=drop_na_cells,
+                label_na=label_na,
             )
 
-            if drop_na_cells:
+            if label_na:
                 nan_mask = adata.obs[group_key].isna()
                 if nan_mask.any():
                     n_nan = int(nan_mask.sum())
                     pct = round(100 * n_nan / adata.n_obs, 1)
-                    logger.warning(
-                        f"⚠️  Dropping {n_nan} cells ({pct}%) with NaN values in '{group_key}'. "
-                        f"{adata.n_obs - n_nan} cells remaining."
+                    existing_labels = set(
+                        str(v) for v in adata.obs[group_key].dropna().unique()
                     )
-                    adata = adata[~nan_mask].copy()
+                    na_label = _generate_unique_na_label(existing_labels)
+                    logger.warning(
+                        f"⚠️  Relabeling {n_nan} cells ({pct}%) with NaN values "
+                        f"in '{group_key}' as '{na_label}'."
+                    )
+                    adata = anndata.AnnData(
+                        X=adata.X,
+                        obs=adata.obs.copy(),
+                        var=adata.var,
+                        uns=adata.uns,
+                        obsm=adata.obsm,
+                        varm=adata.varm,
+                        layers=adata.layers,
+                        obsp=adata.obsp,
+                        varp=adata.varp,
+                    )
+                    adata.obs[group_key] = (
+                        adata.obs[group_key].fillna(na_label)
+                    )
                     self.adata = adata
 
             (

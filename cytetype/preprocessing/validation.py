@@ -266,13 +266,23 @@ def resolve_gene_symbols_column(
     return None
 
 
+def _generate_unique_na_label(existing_labels: set[str]) -> str:
+    label = "Unknown"
+    if label not in existing_labels:
+        return label
+    n = 2
+    while f"{label} {n}" in existing_labels:
+        n += 1
+    return f"{label} {n}"
+
+
 def validate_adata(
     adata: anndata.AnnData,
     cell_group_key: str,
     rank_genes_key: str,
     gene_symbols_col: str | None,
     coordinates_key: str,
-    drop_na_cells: bool = False,
+    label_na: bool = False,
 ) -> str | None:
     if cell_group_key not in adata.obs:
         raise KeyError(f"Cell group key '{cell_group_key}' not found in `adata.obs`.")
@@ -286,10 +296,11 @@ def validate_adata(
                 f"All {n_nan} cells have NaN values in '{cell_group_key}'. "
                 f"Cannot proceed with annotation."
             )
-        if not drop_na_cells:
+        if not label_na:
             raise ValueError(
                 f"{n_nan} cells ({pct}%) have NaN values in '{cell_group_key}'. "
-                f"Either fix the data or set drop_na_cells=True to exclude these cells."
+                f"Either fix the data or set label_na=True to assign these cells "
+                f"an 'Unknown' cluster label."
             )
 
     if adata.X is None:
