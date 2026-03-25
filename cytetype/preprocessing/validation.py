@@ -105,7 +105,7 @@ def materialize_canonical_gene_symbols_column(
     cleaned = clean_gene_names(source_values)
 
     id_pct = _id_like_percentage(cleaned)
-    if id_pct > 50:
+    if id_pct > 49:
         examples = [v for v in cleaned[:20] if _is_gene_id_like(v)][:5]
         raise ValueError(
             f"The resolved gene symbols from {source_name} contain more than 50% gene IDs rather than "
