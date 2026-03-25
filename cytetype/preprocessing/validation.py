@@ -106,14 +106,13 @@ def materialize_canonical_gene_symbols_column(
 
     id_pct = _id_like_percentage(cleaned)
     if id_pct > 49:
-        examples = [v for v in cleaned[:20] if _is_gene_id_like(v)][:5]
         raise ValueError(
-            f"The resolved gene symbols from {source_name} contain more than 50% gene IDs rather than "
-            f"gene symbols ({id_pct:.0f}% of values look like identifiers, e.g., {examples}). "
-            f"CyteType requires human-readable gene symbols (e.g., 'TSPAN6', 'DPM1', 'SCYL3'). "
-            f"Please provide a gene_symbols_column pointing to a column in adata.var "
-            f"that contains gene symbols, or convert your gene identifiers to symbols "
-            f"before running CyteType."
+            f"\n\nGene Symbol Detection Error\n"
+            f"{'─' * 50}\n"
+            f"CyteType requires human-readable gene symbols (e.g., TSPAN6, DPM1, SCYL3)\n"
+            f"To fix this, either:\n"
+            f"  1. Set gene_symbols_column to a column in adata.var that contains gene symbols\n"
+            f"  2. Convert your gene identifiers to symbols before running CyteType\n"
         )
 
     adata.var[canonical_column] = cleaned
