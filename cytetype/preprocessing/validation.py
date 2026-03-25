@@ -28,7 +28,7 @@ def _is_gene_id_like(value: str) -> bool:
     if re.match(r"^[NX][MR]_\d+$", value):
         return True
 
-    if re.match(r"^\d+$", value):
+    if re.match(r"^\d+(?:\.0)?$", value):
         return True
 
     if re.match(r"^[A-Z0-9]+[._][A-Z0-9._]+$", value) and len(value) > 10:
@@ -102,7 +102,20 @@ def materialize_canonical_gene_symbols_column(
         source_name = f"column '{gene_symbols_column}'"
 
     canonical_column = _temporary_gene_symbols_column_name(adata)
-    adata.var[canonical_column] = clean_gene_names(source_values)
+    cleaned = clean_gene_names(source_values)
+
+    id_pct = _id_like_percentage(cleaned)
+    if id_pct > 49:
+        raise ValueError(
+            f"\n\nGene Symbol Detection Error\n"
+            f"{'─' * 50}\n"
+            f"CyteType requires human-readable gene symbols (e.g., TSPAN6, DPM1, SCYL3)\n"
+            f"To fix this, either:\n"
+            f"  1. Set gene_symbols_column to a column in adata.var that contains gene symbols\n"
+            f"  2. Convert your gene identifiers to symbols before running CyteType\n"
+        )
+
+    adata.var[canonical_column] = cleaned
     logger.info(
         f"Materialized canonical gene symbols in temporary column '{canonical_column}' "
         f"from {source_name}."
