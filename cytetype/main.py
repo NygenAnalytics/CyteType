@@ -162,7 +162,7 @@ class CyteType:
             self._original_gene_symbols_column = self.gene_symbols_column
 
             self.coordinates_key = validate_adata(
-                adata, group_key, rank_key, coordinates_key
+                adata, group_key, rank_key, coordinates_key,
                 label_na=label_na,
             )
 
