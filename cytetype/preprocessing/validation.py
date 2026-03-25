@@ -270,7 +270,6 @@ def validate_adata(
     adata: anndata.AnnData,
     cell_group_key: str,
     rank_genes_key: str,
-    gene_symbols_col: str | None,
     coordinates_key: str,
 ) -> str | None:
     if cell_group_key not in adata.obs:

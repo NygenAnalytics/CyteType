@@ -146,13 +146,14 @@ class CyteType:
         self._temporary_gene_symbols_column: str | None = None
 
         try:
+
             self.gene_symbols_column = resolve_gene_symbols_column(
                 adata, gene_symbols_column
             )
             self._original_gene_symbols_column = self.gene_symbols_column
 
             self.coordinates_key = validate_adata(
-                adata, group_key, rank_key, self.gene_symbols_column, coordinates_key
+                adata, group_key, rank_key, coordinates_key
             )
             (
                 self.gene_symbols_column,
