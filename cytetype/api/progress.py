@@ -64,7 +64,7 @@ class ProgressDisplay:
 
         if self._interactive:
             message = self._build_running_line(job_status)
-            print(f"\r{message}", end="", file=self.stream, flush=True)
+            print(f"\r{message}\033[K", end="", file=self.stream, flush=True)
         elif self._use_notebook_display:
             self._update_notebook_display(self._build_running_line(job_status))
         else:
@@ -92,7 +92,7 @@ class ProgressDisplay:
 
         message = self._build_final_line(final_status)
         if self._interactive:
-            print(f"\r{message}", file=self.stream, flush=True)
+            print(f"\r{message}\033[K", file=self.stream, flush=True)
         elif self._use_notebook_display:
             self._update_notebook_display(message)
         else:
