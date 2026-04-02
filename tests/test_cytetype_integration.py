@@ -414,7 +414,7 @@ def test_cytetype_initialization_with_auth_token(mock_adata: anndata.AnnData) ->
     ct = CyteType(mock_adata, group_key="leiden", auth_token="test_token_123")
 
     assert ct.auth_token == "test_token_123"
-    assert ct.api_url == "https://prod.cytetype.nygen.io"
+    assert ct.api_url == "https://cytetype.nygen.io"
 
 
 def test_cytetype_no_coordinates(mock_adata: anndata.AnnData) -> None:

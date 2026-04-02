@@ -88,7 +88,7 @@ class CyteType:
         vars_h5_path: str = "vars.h5",
         obs_duckdb_path: str = "obs.duckdb",
         max_metadata_categories: int = 500,
-        api_url: str = "https://prod.cytetype.nygen.io",
+        api_url: str = "https://cytetype.nygen.io",
         auth_token: str | None = None,
         label_na: bool = False,
     ) -> None:
@@ -126,7 +126,7 @@ class CyteType:
                 more unique values (e.g. cell barcodes, per-cell IDs) are skipped to avoid
                 excessive memory usage. Defaults to 500.
             api_url (str, optional): URL for the CyteType API endpoint. Only change if using a custom
-                deployment. Defaults to "https://prod.cytetype.nygen.io".
+                deployment. Defaults to "https://cytetype.nygen.io".
             auth_token (str | None, optional): Bearer token for API authentication. If provided,
                 will be included in the Authorization header as "Bearer {auth_token}". Defaults to None.
             label_na (bool, optional): If True, cells with NaN values in the
@@ -161,7 +161,11 @@ class CyteType:
             self._original_gene_symbols_column = self.gene_symbols_column
 
             self.coordinates_key = validate_adata(
-                adata, group_key, rank_key, self.gene_symbols_column, coordinates_key,
+                adata,
+                group_key,
+                rank_key,
+                self.gene_symbols_column,
+                coordinates_key,
                 label_na=label_na,
             )
 
@@ -601,6 +605,9 @@ class CyteType:
             self.clusters,
             check_unannotated=True,
         )
+
+        report_url = self.adata.uns[f"{results_prefix}_jobDetails"]["report_url"]
+        logger.info(f"Report:\n{report_url}")
 
         return self.adata
 

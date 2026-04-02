@@ -375,19 +375,23 @@ def fetch_job_results(
 def _sleep_with_spinner(
     seconds: int,
     progress: ProgressDisplay | None,
-    cluster_status: dict[str, str],
+    job_status: str,
 ) -> None:
     """Sleep for specified seconds while updating spinner animation.
 
     Args:
         seconds: Number of seconds to sleep
         progress: ProgressDisplay instance (if showing progress)
-        cluster_status: Current cluster status for display
+        job_status: Current overall job status for display
     """
     for _ in range(seconds * 2):
         if progress:
-            progress.update(cluster_status)
+            progress.update(job_status)
         time.sleep(0.5)
+
+
+def _log_report_cta(report_url: str) -> None:
+    logger.info(f"\n[TRACK PROGRESS]\n{report_url}")
 
 
 def wait_for_completion(
@@ -401,26 +405,26 @@ def wait_for_completion(
     """Poll job until completion and return results."""
     progress = ProgressDisplay() if show_progress else None
     start_time = time.time()
+    report_url = f"{base_url.rstrip('/')}/report/{job_id}"
 
-    logger.info(f"CyteType job (id: {job_id}) submitted. Polling for results...")
+    logger.info("CyteType job submitted.")
+    logger.info(
+        "If your session disconnects, results can still be fetched later with:\n"
+        "`results = annotator.get_results()`"
+    )
+    _log_report_cta(report_url)
 
     # Initial delay
     time.sleep(5)
 
-    # Show report URL
-    report_url = f"{base_url}/report/{job_id}"
-    logger.info(f"Report (updates automatically) available at: {report_url}")
-    logger.info(
-        "If network disconnects, the results can still be fetched:\n"
-        "`results = annotator.get_results()`"
-    )
-
     consecutive_not_found = 0
+    job_status = "pending"
+    cluster_status: dict[str, str] = {}
 
     while (time.time() - start_time) < timeout:
         try:
             status_data = get_job_status(base_url, auth_token, job_id)
-            job_status = status_data.get("jobStatus")
+            job_status = str(status_data.get("jobStatus") or "")
             cluster_status = status_data.get("clusterStatus", {})
 
             # Reset 404 counter on valid response
@@ -429,20 +433,21 @@ def wait_for_completion(
 
             if job_status == "completed":
                 if progress:
-                    progress.finalize(cluster_status)
+                    progress.finalize("completed", cluster_status)
                 logger.success(f"Job {job_id} completed successfully.")
                 return fetch_job_results(base_url, auth_token, job_id)
 
             elif job_status == "failed":
                 if progress:
-                    progress.finalize(cluster_status)
+                    progress.finalize("failed", cluster_status)
+                logger.info(f"Report:\n{report_url}")
                 raise JobFailedError(f"Job {job_id} failed")
 
             elif job_status in ["processing", "pending"]:
                 logger.debug(
                     f"Job {job_id} status: {job_status}. Waiting {poll_interval}s..."
                 )
-                _sleep_with_spinner(poll_interval, progress, cluster_status)
+                _sleep_with_spinner(poll_interval, progress, job_status)
 
             elif job_status == "not_found":
                 consecutive_not_found += 1
@@ -459,24 +464,25 @@ def wait_for_completion(
                     f"Status endpoint not ready for job {job_id}. "
                     f"Waiting {poll_interval}s..."
                 )
-                _sleep_with_spinner(poll_interval, progress, cluster_status)
+                _sleep_with_spinner(poll_interval, progress, job_status)
 
             else:
                 logger.warning(f"Unknown job status: '{job_status}'. Continuing...")
-                _sleep_with_spinner(poll_interval, progress, cluster_status)
+                _sleep_with_spinner(poll_interval, progress, job_status)
 
         except APIError:
             # Let API errors (auth, etc.) bubble up immediately
             if progress:
-                progress.finalize({})
+                progress.finalize()
             raise
         except Exception as e:
             # Network errors - log and retry
             logger.debug(f"Error during polling: {e}. Retrying...")
             retry_interval = min(poll_interval, 5)
-            _sleep_with_spinner(retry_interval, progress, cluster_status)
+            _sleep_with_spinner(retry_interval, progress, job_status)
 
     # Timeout reached
     if progress:
-        progress.finalize({})
+        progress.finalize("timed_out")
+    logger.info(f"Report:\n{report_url}")
     raise TimeoutError(f"Job {job_id} did not complete within {timeout}s")
