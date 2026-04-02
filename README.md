@@ -105,7 +105,7 @@ Each analysis generates an HTML report documenting annotation decisions, reviewe
 <img width="1000" alt="CyteType HTML report showing cell type annotations marker genes" src="https://github.com/user-attachments/assets/e5373fdd-7173-42db-b863-76a1e8ecfe01" />
 
 
-[View example report](https://prod.cytetype.nygen.io/report/e70e2883-7713-4121-94f2-5b57eabd1468?v=260303)
+[View example report](https://cytetype.nygen.io/report/e70e2883-7713-4121-94f2-5b57eabd1468?v=260303)
 
 ---
 
