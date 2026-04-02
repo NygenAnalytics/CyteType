@@ -21,8 +21,8 @@ def _create_notebook_display_handle(message: str) -> Any | None:
     except ImportError:
         return None
 
-    display_fn = cast(Callable[..., Any], display)
-    return display_fn(_render_notebook_message(message), display_id=True)
+    _display: Callable[..., Any] = display
+    return _display(_render_notebook_message(message), display_id=True)
 
 
 def _render_notebook_message(message: str) -> Any:
