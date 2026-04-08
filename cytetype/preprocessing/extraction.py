@@ -95,6 +95,7 @@ def extract_marker_genes(
         raise ValueError(
             "No marker genes found for any group. This could indicate issues with the "
             "rank_genes_groups analysis or that all groups have insufficient marker genes."
+        )
 
     return markers
 
