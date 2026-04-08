@@ -338,6 +338,28 @@ def validate_adata(
             f"'names' field in `adata.uns['{rank_genes_key}']` is missing or invalid."
         )
 
+    rank_names = adata.uns[rank_genes_key]["names"]
+    try:
+        sample_genes = [
+            str(g)
+            for field in rank_names.dtype.names[:3]
+            for g in rank_names[field][:20]
+        ]
+    except Exception:
+        sample_genes = []
+
+    if sample_genes:
+        id_pct = _id_like_percentage(sample_genes)
+        if id_pct > 50:
+            examples = [g for g in sample_genes if _is_gene_id_like(g)][:3]
+            logger.warning(
+                f"rank_genes_groups results contain gene IDs rather than gene symbols "
+                f"(e.g. {examples}). This typically happens when var_names were Ensembl "
+                f"IDs at the time rank_genes_groups was run but have since been replaced "
+                f"with gene symbols. Marker gene extraction may fail or produce empty "
+                f"results. Consider re-running sc.tl.rank_genes_groups on the current adata."
+            )
+
     # Validate coordinates with fallback options (case-insensitive matching)
     common_coordinate_keys = [coordinates_key, "X_umap", "X_tsne", "X_pca"]
     found_coordinates_key: str | None = None
