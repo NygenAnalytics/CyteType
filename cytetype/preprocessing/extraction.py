@@ -91,6 +91,10 @@ def extract_marker_genes(
             "could not be matched to adata.var_names. This typically happens "
             "when var_names were changed after rank_genes_groups was run."
         )
+    if not any_genes_found:
+        raise ValueError(
+            "No marker genes found for any group. This could indicate issues with the "
+            "rank_genes_groups analysis or that all groups have insufficient marker genes."
 
     return markers
 
