@@ -78,10 +78,18 @@ def extract_marker_genes(
             gene_ids_to_name[gene] for gene in top_genes if gene in gene_ids_to_name
         ]
 
-    if not any_genes_found:
+        lost_genes = len(top_genes) - len(markers[cluster_id])
+        if lost_genes > 0:
+            logger.warning(
+                f"Number of lost genes ({lost_genes}) for group '{group_name}' (cluster '{cluster_id}'). \n"
+                f"This could indicate inconsistencies with the marker genes and the genes in adata.var."
+            )
+
+    if not any(markers.values()):
         raise ValueError(
-            "No marker genes found for any group. This could indicate issues with the "
-            "rank_genes_groups analysis or that all groups have insufficient marker genes."
+            "All marker gene lists are empty. Gene names in rank_genes_groups "
+            "could not be matched to adata.var_names. This typically happens "
+            "when var_names were changed after rank_genes_groups was run."
         )
 
     return markers
