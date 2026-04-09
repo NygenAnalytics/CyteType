@@ -85,16 +85,17 @@ def extract_marker_genes(
                 f"This could indicate inconsistencies with the marker genes and the genes in adata.var."
             )
 
+    if not any_genes_found:
+        raise ValueError(
+            "No marker genes found for any group. This could indicate issues with the "
+            "rank_genes_groups analysis or that all groups have insufficient marker genes."
+        )
+
     if not any(markers.values()):
         raise ValueError(
             "All marker gene lists are empty. Gene names in rank_genes_groups "
             "could not be matched to adata.var_names. This typically happens "
             "when var_names were changed after rank_genes_groups was run."
-        )
-    if not any_genes_found:
-        raise ValueError(
-            "No marker genes found for any group. This could indicate issues with the "
-            "rank_genes_groups analysis or that all groups have insufficient marker genes."
         )
 
     return markers
