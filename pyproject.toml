@@ -26,6 +26,9 @@ Homepage = "https://github.com/NygenAnalytics/cytetype"
 Issues = "https://github.com/NygenAnalytics/cytetype/issues"
 Repository = "https://github.com/NygenAnalytics/cytetype"
 
+[project.scripts]
+cytetype = "cytetype.cli:main"
+
 [dependency-groups]
 dev = [
     "jupyterlab~=4.5.4",
@@ -45,6 +48,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = {find = {}}
+
+[tool.setuptools.package-data]
+cytetype = ["templates/*.html"]
 
 [tool.setuptools.dynamic]
 version = {attr = "cytetype.__version__"}
