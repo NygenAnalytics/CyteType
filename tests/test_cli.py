@@ -41,11 +41,47 @@ def test_credentials_round_trip_is_private_and_server_specific(
     path = save_credentials(credentials)
 
     assert path == tmp_path / "cytetype" / "credentials.json"
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert load_credentials("https://dev.cytetype.example/") == credentials
     assert load_credentials("https://other.example") is None
     assert delete_credentials() is True
     assert delete_credentials() is False
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permissions required")
+def test_save_credentials_repairs_existing_directory_permissions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    credentials: StoredCredentials,
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    directory = get_credentials_path().parent
+    directory.mkdir(parents=True)
+    directory.chmod(0o777)
+
+    path = save_credentials(credentials)
+
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    assert path.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX ownership required")
+def test_save_credentials_rejects_directory_owned_by_another_user(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    credentials: StoredCredentials,
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    path = get_credentials_path()
+    path.parent.mkdir(parents=True)
+    owner_uid = path.parent.stat().st_uid
+    monkeypatch.setattr("cytetype.config.os.getuid", lambda: owner_uid + 1)
+
+    with pytest.raises(PermissionError, match="not owned by the current user"):
+        save_credentials(credentials)
+
+    assert not path.exists()
 
 
 def test_invalid_credentials_file_has_clear_error(

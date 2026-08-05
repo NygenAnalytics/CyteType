@@ -1,5 +1,6 @@
 import json
 import os
+import stat
 import sys
 import tempfile
 from pathlib import Path
@@ -47,6 +48,23 @@ def get_credentials_path() -> Path:
 def save_credentials(credentials: StoredCredentials) -> Path:
     path = get_credentials_path()
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if os.name == "posix":
+        directory_stat = path.parent.stat()
+        if directory_stat.st_uid != os.getuid():
+            raise PermissionError(
+                "CyteType credentials directory is not owned by the current user: "
+                f"{path.parent}"
+            )
+        if stat.S_IMODE(directory_stat.st_mode) != 0o700:
+            path.parent.chmod(0o700)
+            directory_stat = path.parent.stat()
+            if (
+                directory_stat.st_uid != os.getuid()
+                or stat.S_IMODE(directory_stat.st_mode) != 0o700
+            ):
+                raise PermissionError(
+                    f"Could not secure CyteType credentials directory: {path.parent}"
+                )
     descriptor, temporary_name = tempfile.mkstemp(
         dir=path.parent,
         prefix=".credentials-",
@@ -95,7 +113,7 @@ def delete_credentials() -> bool:
 logger.remove()
 
 
-def _log_format(record: Record) -> str:
+def _log_format(record: "Record") -> str:
     if record["level"].name == "WARNING":
         return "⚠️  {message}\n"
     if record["level"].name == "SUCCESS":

@@ -16,7 +16,7 @@ from string import Template
 from urllib.parse import parse_qs, quote, urlencode, urlparse
 
 import requests
-from pydantic import ValidationError
+from pydantic import ValidationError  # pyright: ignore[reportMissingImports]
 
 from . import __version__
 from .config import (
@@ -319,15 +319,14 @@ def _run_setup(api_url: str) -> StoredCredentials:
     server = HTTPServer(("127.0.0.1", 0), CallbackHandler)
     try:
         redirect_uri = f"http://127.0.0.1:{server.server_port}/callback"
-        authorize_url = f"{api_url}/auth/cli/authorize?{
-            urlencode(
-                {
-                    'redirectUri': redirect_uri,
-                    'state': state,
-                    'codeChallenge': challenge,
-                }
-            )
-        }"
+        query = urlencode(
+            {
+                "redirectUri": redirect_uri,
+                "state": state,
+                "codeChallenge": challenge,
+            }
+        )
+        authorize_url = f"{api_url}/auth/cli/authorize?{query}"
         print("Opening CyteType sign-in in your browser.")
         print("If it does not open automatically, use this URL:")
         print()
