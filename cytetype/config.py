@@ -64,6 +64,7 @@ def resolve_dashboard_url(credentials: StoredCredentials) -> str:
         return f"{api_url}/dashboard"
     return credentials.dashboardUrl
 
+
 def get_default_api_url() -> str:
     configured_api_url = os.environ.get("CYTETYPE_API_URL")
     if configured_api_url is None:

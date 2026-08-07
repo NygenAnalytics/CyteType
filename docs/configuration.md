@@ -49,19 +49,51 @@ adata = annotator.run(
 - For local models via Ollama, see [Ollama Integration](./ollama.md)
 
 ## Authentication
+
+Before the first annotation, sign in through the CLI:
+
+```bash
+cytetype setup
+```
+
+CyteType opens browser-based authorization and saves a personal API key locally. The Python client automatically loads the saved key for the selected API server when `run()` starts.
+
+For a custom server, use the same origin during setup and in Python:
+
+```bash
+cytetype setup --api-url https://cytetype.example.org
+```
+
 ```python
+annotator = CyteType(
+    adata,
+    group_key="leiden",
+    api_url="https://cytetype.example.org",
+)
+adata = annotator.run(study_context="Human PBMC")
+```
+
+For CI or another managed environment, a token can be supplied directly instead of using the local credentials file:
+
+```python
+import os
+
 adata = annotator.run(
-    study_context="...",
-    auth_token="your-auth-token",  # included as Authorization: Bearer <token>
+    study_context="Human PBMC",
+    auth_token=os.environ["CYTETYPE_API_TOKEN"],
 )
 ```
+
+The environment variable in this example is user-managed. CyteType does not read `CYTETYPE_API_TOKEN` automatically. Do not hard-code API keys in source files or notebooks.
+
+See [CLI and Authentication](./cli.md) for all commands, credential locations, custom server rules, and authentication precedence.
 
 ## Artifacts
 
 `run()` automatically builds and uploads two artifact files before submitting an annotation job:
 
-- **`vars.h5`** — a compressed HDF5 file containing the normalized expression matrix (`adata.X`) and variable metadata (`adata.var`). Used by the server for on-demand gene expression lookups during annotation and in the interactive report.
-- **`obs.duckdb`** — a DuckDB database containing the observation metadata (`adata.obs`). Used by the server to power metadata queries and filtering in the interactive report.
+- **`vars.h5`**: a compressed HDF5 file containing the normalized expression matrix (`adata.X`) and variable metadata (`adata.var`). Used by the server for on-demand gene expression lookups during annotation and in the interactive report.
+- **`obs.duckdb`**: a DuckDB database containing the observation metadata (`adata.obs`). Used by the server to power metadata queries and filtering in the interactive report.
 
 Both files are created locally and then uploaded to the CyteType API. The uploaded references are attached to the `/annotate` payload so the server can link them to the job.
 
@@ -90,7 +122,7 @@ adata = annotator.run(
 
 By default (`require_artifacts=True`), any failure during artifact building or uploading stops the run and surfaces the full error. The error message includes a link to report the issue on GitHub.
 
-If you want the annotation to proceed even when artifacts fail (e.g. due to disk space or network issues), set `require_artifacts=False`. The job will submit without artifacts — annotation still works, but the interactive report will not have expression lookups or metadata filtering.
+If you want the annotation to proceed even when artifacts fail (e.g. due to disk space or network issues), set `require_artifacts=False`. Annotation will still work, but the interactive report will not have expression lookups or metadata filtering.
 
 ### Memory Recommendation for Large Datasets
 

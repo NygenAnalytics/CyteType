@@ -54,6 +54,7 @@ _CALLBACK_PAGE_TEMPLATE = Template(
     .read_text(encoding="utf-8")
 )
 
+
 def _render_callback_page(
     message: str,
     credentials: StoredCredentials | None = None,

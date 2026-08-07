@@ -42,12 +42,12 @@ CyteType addresses this with a novel agentic architecture: specialized AI agents
 | Feature | Description |
 |---------|-------------|
 | **Cell Ontology Integration** | Automatic CL ID assignment for standardized terminology and cross-study comparison |
-| **Confidence Scores** | Numeric certainty values (0–1) for cell type, subtype, and activation state — useful for flagging ambiguous clusters |
-| **Linked Literature** | Each annotation includes supporting publications and condition-specific references — see exactly why a call was made |
+| **Confidence Scores** | Numeric certainty values (0–1) for cell type, subtype, and activation state, useful for flagging ambiguous clusters |
+| **Linked Literature** | Each annotation includes supporting publications and condition-specific references so you can see why a call was made |
 | **Annotation QC via Match Scores** | Compare CyteType results against your existing annotations to quickly identify discrepancies and validate previous work |
 | **Embedded Chat Interface** | Explore results interactively; chat is connected to your expression data for on-the-fly queries |
 
-Also included: interactive HTML reports, Scanpy/Seurat compatibility (R wrapper via [CyteTypeR](https://github.com/NygenAnalytics/CyteTypeR)), and no API keys required out of the box.
+Also included: interactive HTML reports, Scanpy/Seurat compatibility (R wrapper via [CyteTypeR](https://github.com/NygenAnalytics/CyteTypeR)), and browser-based CLI sign-in with locally saved credentials.
 
 📹 [Watch CyteType intro video](https://vimeo.com/nygen/cytetype)
 
@@ -61,6 +61,14 @@ Also included: interactive HTML reports, Scanpy/Seurat compatibility (R wrapper 
 pip install cytetype
 ```
 
+### Sign In
+
+```bash
+cytetype setup
+```
+
+This opens CyteType sign-in in your browser and saves a personal API key locally. If the browser does not open, follow the URL printed in the terminal. If a saved key is revoked, run `cytetype logout` before running setup again.
+
 ### Basic Usage with Scanpy
 
 ```python
@@ -70,9 +78,9 @@ from cytetype import CyteType
 # Assumes preprocessed AnnData with clusters and marker genes
 group_key = 'clusters'
 annotator = CyteType(
-    adata, 
-    group_key=group_key, 
-    rank_key='rank_genes_' + group_key, 
+    adata,
+    group_key=group_key,
+    rank_key='rank_genes_' + group_key,
     n_top_genes=100
 )
 adata = annotator.run(study_context="Human PBMC from healthy donor")
@@ -80,7 +88,7 @@ sc.pl.umap(adata, color='cytetype_annotation_clusters')
 ```
 🚀 [Try it in Google Colab](https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsqRsh2N7?usp=sharing)
 
-> **Note:** No API keys required for default configuration. See [Configuration](docs/configuration.md) for LLM setup, artifact handling, and advanced options.
+CyteType automatically uses the credentials saved by `cytetype setup`. See [CLI and Authentication](docs/cli.md) for existing API keys, custom servers, credential storage, and non-interactive environments.
 
 **Using R/Seurat?** → [CyteTypeR](https://github.com/NygenAnalytics/CyteTypeR)
 
@@ -90,6 +98,7 @@ sc.pl.umap(adata, color='cytetype_annotation_clusters')
 
 | Resource | Description |
 |----------|-------------|
+| [CLI and Authentication](docs/cli.md) | Sign-in, API keys, saved credentials, and CLI commands |
 | [Configuration](docs/configuration.md) | LLM settings, parameters, and customization |
 | [Output Columns](docs/results.md) | Understanding annotation results and metadata |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues and solutions |

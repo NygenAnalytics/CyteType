@@ -8,17 +8,20 @@ CyteType client communicates with a hosted server that performs multi‑agent an
 - You can re‑annotate a single cluster with feedback without re‑submitting the whole job.
 
 ## Key Endpoints
-- POST `/annotate` — start a job. Optional `auth_token` for privacy
-- GET `/status/{job_id}` — pending/processing/completed/failed + per‑cluster status
-- GET `/results/{job_id}` — detailed results (summary + per‑cluster, with latest run)
-- GET `/report/{job_id}` — HTML report shell backed by the same `/results`
-- POST `/reannotate?job_id=...&cluster_id=...&feedback=...` — single‑cluster retry
-- POST `/cluster_chat` — streaming Q&A on a cluster (SSE)
+- POST `/annotate`: start an authenticated job
+- GET `/status/{job_id}`: pending/processing/completed/failed + per‑cluster status
+- GET `/results/{job_id}`: detailed results (summary + per‑cluster, with latest run)
+- GET `/report/{job_id}`: HTML report shell backed by the same `/results`
+- POST `/reannotate?job_id=...&cluster_id=...&feedback=...`: single‑cluster retry
+- POST `/cluster_chat`: streaming Q&A on a cluster (SSE)
 
-## Access Control
-- If you submit with `auth_token`, the job is private; the same token is required for reads until you publish.
-- Submissions without a token are public by default. Your job id is not indexed by search engines, so in effect it is private, unless you share the job id with someone.
-- `GET /publish/{job_id}` to make a job public. This can be triggered via report.
+## Authentication and Access
+- The Python client requires a bearer token before uploading artifacts, submitting jobs, or fetching remote results.
+- For local use, run `cytetype setup` and let the client load the saved credentials automatically.
+- Saved credentials and direct tokens are tied to the selected API origin. Credentials for one server are not reused for another server.
+- `cytetype view <job_id>` opens a report through the selected server's browser sign-in flow without putting the API key in the URL.
+
+See [CLI and Authentication](./cli.md) for setup and credential handling.
 
 ## Rate Limits (typical defaults)
 - Annotate: 5/day (Unlimited when a LLM is provided)

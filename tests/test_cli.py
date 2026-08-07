@@ -15,6 +15,7 @@ from cytetype.config import (
     delete_credentials,
     get_credentials_path,
     load_credentials,
+    resolve_dashboard_url,
     save_credentials,
     validate_api_url,
 )
@@ -155,7 +156,7 @@ def test_dashboard_url_uses_api_origin_only_when_origins_differ(
     credentials: StoredCredentials,
 ) -> None:
     assert (
-        cli._resolve_dashboard_url(credentials)
+        resolve_dashboard_url(credentials)
         == "https://dev.cytetype.example/dashboard"
     )
 
@@ -166,7 +167,7 @@ def test_dashboard_url_uses_api_origin_only_when_origins_differ(
         }
     )
     assert (
-        cli._resolve_dashboard_url(same_origin)
+        resolve_dashboard_url(same_origin)
         == "https://api.cytetype.example/custom-dashboard"
     )
 
