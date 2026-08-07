@@ -16,6 +16,7 @@ from cytetype.config import (
     get_credentials_path,
     load_credentials,
     save_credentials,
+    validate_api_url,
 )
 
 
@@ -565,6 +566,6 @@ def test_dashboard_view_and_logout_use_saved_server(
         "ftp://example.com",
     ],
 )
-def test_setup_rejects_unsafe_api_url(api_url: str) -> None:
+def test_validate_api_url_rejects_unsafe_api_url(api_url: str) -> None:
     with pytest.raises(ValueError):
-        cli._validate_api_url(api_url)
+        validate_api_url(api_url)

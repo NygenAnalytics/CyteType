@@ -5,6 +5,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError
@@ -28,6 +29,40 @@ class StoredCredentials(BaseModel):
 def normalize_api_url(api_url: str) -> str:
     return api_url.strip().rstrip("/")
 
+
+def validate_api_url(value: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError("API URL must be an HTTP or HTTPS server origin")
+    api_url = normalize_api_url(value)
+    parsed = urlparse(api_url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+    ):
+        raise ValueError("API URL must be an HTTP or HTTPS server origin")
+    if parsed.scheme == "http" and parsed.hostname not in {"127.0.0.1", "localhost"}:
+        raise ValueError("Non-local API URLs must use HTTPS")
+    return api_url
+
+
+def resolve_dashboard_url(credentials: StoredCredentials) -> str:
+    api_url = normalize_api_url(credentials.apiUrl)
+    api_origin = urlparse(api_url)
+    dashboard_origin = urlparse(credentials.dashboardUrl)
+    if (
+        api_origin.scheme.lower(),
+        api_origin.netloc.lower(),
+    ) != (
+        dashboard_origin.scheme.lower(),
+        dashboard_origin.netloc.lower(),
+    ):
+        return f"{api_url}/dashboard"
+    return credentials.dashboardUrl
 
 def get_default_api_url() -> str:
     configured_api_url = os.environ.get("CYTETYPE_API_URL")

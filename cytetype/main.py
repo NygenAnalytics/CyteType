@@ -15,7 +15,7 @@ from .api.client import (
     upload_vars_h5 as upload_vars_h5_file,
 )
 from .api.exceptions import AuthenticationError
-from .config import get_default_api_url, load_credentials, logger, normalize_api_url
+from .config import get_default_api_url, load_credentials, logger, validate_api_url
 from .core.artifacts import (
     _is_integer_valued,
     save_features_matrix,
@@ -152,11 +152,11 @@ class CyteType:
         self.pcent_batch_size = pcent_batch_size
         self.coordinates_key = coordinates_key
         self.max_cells_per_group = max_cells_per_group
-        self.api_url = normalize_api_url(
+        self.api_url = validate_api_url(
             api_url if api_url is not None else get_default_api_url()
         )
         self.auth_token = auth_token
-        self._auth_token_api_url = None
+        self._auth_token_api_url = self.api_url if auth_token else None
         self._artifact_build_errors: list[tuple[str, Exception]] = []
         self._vars_h5_path: str | None = None
         self._obs_duckdb_path: str | None = None
@@ -459,16 +459,13 @@ class CyteType:
         api_url: str,
         auth_token: str | None = None,
     ) -> str:
-        normalized_api_url = normalize_api_url(api_url)
+        normalized_api_url = validate_api_url(api_url)
         if auth_token:
             self.auth_token = auth_token
-            self._auth_token_api_url = None
+            self._auth_token_api_url = normalized_api_url
             return auth_token
 
-        if self.auth_token and (
-            self._auth_token_api_url is None
-            or self._auth_token_api_url == normalized_api_url
-        ):
+        if self.auth_token and self._auth_token_api_url == normalized_api_url:
             return self.auth_token
 
         self.auth_token = None
@@ -578,8 +575,8 @@ class CyteType:
                 f"  3. Use annotator.get_results(results_prefix='{results_prefix}') to retrieve existing results"
             )
 
-        if api_url:
-            self.api_url = normalize_api_url(api_url)
+        if api_url is not None:
+            self.api_url = validate_api_url(api_url)
         self._resolve_auth_token(self.api_url, auth_token)
         if upload_timeout_seconds <= 0:
             raise ValueError("upload_timeout_seconds must be greater than 0")
@@ -693,7 +690,10 @@ class CyteType:
             logger.error("Job details found but missing job_id.")
             return None
 
-        job_api_url = normalize_api_url(job_details.get("api_url") or self.api_url)
+        stored_api_url = job_details.get("api_url")
+        job_api_url = validate_api_url(
+            self.api_url if stored_api_url is None else stored_api_url
+        )
         auth_token = self._resolve_auth_token(job_api_url)
         return fetch_remote_results(
             self.adata,

@@ -26,8 +26,9 @@ from .config import (
     delete_credentials,
     get_default_api_url,
     load_credentials,
-    normalize_api_url,
+    resolve_dashboard_url,
     save_credentials,
+    validate_api_url,
 )
 
 _SETUP_TIMEOUT_SECONDS = 300
@@ -53,40 +54,6 @@ _CALLBACK_PAGE_TEMPLATE = Template(
     .read_text(encoding="utf-8")
 )
 
-
-def _validate_api_url(value: str) -> str:
-    api_url = normalize_api_url(value)
-    parsed = urlparse(api_url)
-    if (
-        parsed.scheme not in {"http", "https"}
-        or not parsed.hostname
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.query
-        or parsed.fragment
-        or parsed.path not in {"", "/"}
-    ):
-        raise ValueError("API URL must be an HTTP or HTTPS server origin")
-    if parsed.scheme == "http" and parsed.hostname not in {"127.0.0.1", "localhost"}:
-        raise ValueError("Non-local API URLs must use HTTPS")
-    return api_url
-
-
-def _resolve_dashboard_url(credentials: StoredCredentials) -> str:
-    api_url = normalize_api_url(credentials.apiUrl)
-    api_origin = urlparse(api_url)
-    dashboard_origin = urlparse(credentials.dashboardUrl)
-    if (
-        api_origin.scheme.lower(),
-        api_origin.netloc.lower(),
-    ) != (
-        dashboard_origin.scheme.lower(),
-        dashboard_origin.netloc.lower(),
-    ):
-        return f"{api_url}/dashboard"
-    return credentials.dashboardUrl
-
-
 def _render_callback_page(
     message: str,
     credentials: StoredCredentials | None = None,
@@ -103,7 +70,7 @@ def _render_callback_page(
     }
     if credentials is not None:
         dashboard_url = escape(
-            _resolve_dashboard_url(credentials),
+            resolve_dashboard_url(credentials),
             quote=True,
         )
         context.update(
@@ -209,7 +176,7 @@ def _run_setup(api_url: str) -> StoredCredentials:
     existing = load_credentials(api_url)
     if existing is not None:
         print(f"CyteType is already configured for {existing.email}.")
-        dashboard_url = _resolve_dashboard_url(existing)
+        dashboard_url = resolve_dashboard_url(existing)
         print(f"Dashboard:  {_ANSI_BLUE}{dashboard_url}{_ANSI_RESET}")
         return existing
 
@@ -349,7 +316,7 @@ def _run_setup(api_url: str) -> StoredCredentials:
 
     path = save_credentials(result)
     print(f"API key saved for {result.email} in {path}.")
-    dashboard_url = _resolve_dashboard_url(result)
+    dashboard_url = resolve_dashboard_url(result)
     print(f"Dashboard:  {_ANSI_BLUE}{dashboard_url}{_ANSI_RESET}")
     return result
 
@@ -398,7 +365,7 @@ def _run_login(api_url: str) -> StoredCredentials:
     path = save_credentials(credentials)
     print(f"Signed in as {credentials.email}.")
     print(f"API key saved in {path}.")
-    dashboard_url = _resolve_dashboard_url(credentials)
+    dashboard_url = resolve_dashboard_url(credentials)
     print(f"Dashboard:  {_ANSI_BLUE}{dashboard_url}{_ANSI_RESET}")
     return credentials
 
@@ -453,11 +420,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command in {"setup", "get-key"}:
-            _run_setup(_validate_api_url(args.api_url))
+            _run_setup(validate_api_url(args.api_url))
             return 0
 
         if args.command == "login":
-            _run_login(_validate_api_url(args.api_url))
+            _run_login(validate_api_url(args.api_url))
             return 0
 
         if args.command == "logout":
@@ -470,7 +437,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "dashboard":
             credentials = load_credentials()
             target = (
-                _resolve_dashboard_url(credentials)
+                resolve_dashboard_url(credentials)
                 if credentials
                 else DEFAULT_DASHBOARD_URL
             )
