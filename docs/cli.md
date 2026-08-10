@@ -19,7 +19,7 @@ The command:
 
 The API key is not included in the browser URL or printed in the terminal. If the browser does not open automatically, copy the printed URL into a browser. The command times out after five minutes if authorization is not completed.
 
-Running `cytetype setup` again for the same server reports the configured account without opening another browser.
+Running `cytetype setup` again for the same server validates the saved key before reporting the configured account. A valid key does not open another browser. If the key is invalid or inactive, the command fails without changing the saved credentials. Run `cytetype setup --force` to skip validation and authenticate with a new key.
 
 `cytetype get-key` is an alias for `cytetype setup`.
 
@@ -55,7 +55,7 @@ The key is entered through a hidden prompt. CyteType validates it with the selec
 
 | Command | Purpose |
 | --- | --- |
-| `cytetype setup` | Sign in through a browser and save a personal API key |
+| `cytetype setup [--force]` | Validate saved credentials or sign in through a browser |
 | `cytetype get-key` | Alias for `cytetype setup` |
 | `cytetype login` | Validate and save an existing API key |
 | `cytetype dashboard` | Open the dashboard for the saved server |

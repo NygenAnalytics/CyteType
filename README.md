@@ -1,3 +1,4 @@
+
 <h1 align="left">CyteType</h1>
 <h3 align="left">Agentic, Evidence-Based Cell Type Annotation for Single-Cell RNA-seq</h3>
 
@@ -17,126 +18,93 @@
   </a>
 </p>
 
-**CyteType** performs **automated cell type annotation** in **single-cell RNA sequencing (scRNA-seq)** data. It uses a multi-agent AI architecture to deliver transparent, evidence-based annotations with Cell Ontology mapping.
+**CyteType** is an end-to-end cell type annotation system for **single-cell RNA sequencing (scRNA-seq)**, designed for repeatable analysis pipelines rather than one-off prompting. It combines cluster-level marker genes, expression context, study metadata, literature retrieval, ontology mapping, and a dedicated review step in a structured workflow that operates directly on AnnData.
 
-Integrates with **Scanpy** and **Seurat** workflows.
+For Seurat workflows, use [CyteTypeR](https://github.com/NygenAnalytics/CyteTypeR).
 
----
-
-> **Preprint published:** Nov. 7, 2025: [bioRxiv link](https://www.biorxiv.org/content/10.1101/2025.11.06.686964v1) - Dive into benchmarking results
-
----
-
-## Why CyteType?
-
-Cell type annotation is one of the most time-consuming steps in single-cell analysis. It typically requires weeks of expert curation, and the results often vary between annotators. When annotations do get done, the reasoning is rarely documented; this makes it difficult to reproduce or audit later.
-
-CyteType addresses this with a novel agentic architecture: specialized AI agents collaborate on marker gene analysis, literature evidence retrieval, and ontology mapping. The result is consistent, reproducible annotations with a full evidence trail for every decision.
-
-<img width="800" alt="CyteType multi-agent AI architecture for single-cell RNA-seq cell type annotation" src="https://github.com/user-attachments/assets/c4cc4f67-9c63-4590-9717-c2391b3e5faf" />
-
----
-
-## Key Features
-
-| Feature | Description |
-|---------|-------------|
-| **Cell Ontology Integration** | Automatic CL ID assignment for standardized terminology and cross-study comparison |
-| **Confidence Scores** | Numeric certainty values (0–1) for cell type, subtype, and activation state, useful for flagging ambiguous clusters |
-| **Linked Literature** | Each annotation includes supporting publications and condition-specific references so you can see why a call was made |
-| **Annotation QC via Match Scores** | Compare CyteType results against your existing annotations to quickly identify discrepancies and validate previous work |
-| **Embedded Chat Interface** | Explore results interactively; chat is connected to your expression data for on-the-fly queries |
-
-Also included: interactive HTML reports, Scanpy/Seurat compatibility (R wrapper via [CyteTypeR](https://github.com/NygenAnalytics/CyteTypeR)), and browser-based CLI sign-in with locally saved credentials.
-
-📹 [Watch CyteType intro video](https://vimeo.com/nygen/cytetype)
-
----
+> [!IMPORTANT]
+> CyteType requires an API key. Use is free for academic and non-commercial research. Commercial use requires a [license](#license).
 
 ## Quick Start
 
-### Installation
+### 1. Install
 
 ```bash
 pip install cytetype
 ```
 
-### Sign In
+### 2. Set up your API key
 
 ```bash
 cytetype setup
 ```
 
-This opens CyteType sign-in in your browser and saves a personal API key locally. If the browser does not open, follow the URL printed in the terminal. If a saved key is revoked, run `cytetype logout` before running setup again.
+This opens passwordless CyteType sign-in in your browser and saves the API key locally for automatic use from Python. You can also [create or manage API keys in the dashboard](https://cytetype.nygen.io/dashboard).
 
-### Basic Usage with Scanpy
+Already have an API key? Save and validate it locally once:
+
+```bash
+cytetype login
+```
+
+### 3. Annotate with Scanpy
 
 ```python
 import scanpy as sc
 from cytetype import CyteType
 
 # Assumes preprocessed AnnData with clusters and marker genes
-group_key = 'clusters'
+group_key = "clusters"
 annotator = CyteType(
     adata,
     group_key=group_key,
-    rank_key='rank_genes_' + group_key,
-    n_top_genes=100
+    rank_key=f"rank_genes_{group_key}",
+    n_top_genes=100,
 )
-adata = annotator.run(study_context="Human PBMC from healthy donor")
-sc.pl.umap(adata, color='cytetype_annotation_clusters')
+adata = annotator.run(study_context="Human PBMC from a healthy donor")
+sc.pl.umap(adata, color="cytetype_annotation_clusters")
 ```
-🚀 [Try it in Google Colab](https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsqRsh2N7?usp=sharing)
 
-CyteType automatically uses the credentials saved by `cytetype setup`. See [CLI and Authentication](docs/cli.md) for existing API keys, custom servers, credential storage, and non-interactive environments.
+[Try CyteType in Google Colab](https://colab.research.google.com/drive/1aRLsI3mx8JR8u5BKHs48YUbLsqRsh2N7?usp=sharing).
 
-**Using R/Seurat?** → [CyteTypeR](https://github.com/NygenAnalytics/CyteTypeR)
+## What You Get
 
----
+- **Annotations:** Cell type, subtype, and activation state for every cluster
+- **Cell Ontology mapping:** Standardized CL IDs for comparison across studies
+- **Confidence and quality control:** Confidence values, plus match scores against your existing labels
+- **Supporting evidence:** Publications and condition-specific references behind each call
 
-## Documentation
+## Example Report
 
-| Resource | Description |
-|----------|-------------|
-| [CLI and Authentication](docs/cli.md) | Sign-in, API keys, saved credentials, and CLI commands |
-| [Configuration](docs/configuration.md) | LLM settings, parameters, and customization |
-| [Output Columns](docs/results.md) | Understanding annotation results and metadata |
-| [Troubleshooting](docs/troubleshooting.md) | Common issues and solutions |
-| [Development](docs/development.md) | Contributing and local setup |
-| [Discord](https://discord.gg/V6QFM4AN) | Community support |
-
----
-
-## Output Reports
-
-Each analysis generates an HTML report documenting annotation decisions, reviewer comments and an embedded chat interface for further exploration.
+Each analysis generates an HTML report with annotation decisions, reviewer comments, supporting evidence, and an embedded chat interface connected to your expression data.
 
 <img width="1000" alt="CyteType HTML report showing cell type annotations marker genes" src="https://github.com/user-attachments/assets/e5373fdd-7173-42db-b863-76a1e8ecfe01" />
 
-
 [View example report](https://cytetype.nygen.io/report/e70e2883-7713-4121-94f2-5b57eabd1468?v=260303)
-
----
 
 ## Benchmarks
 
-Validated across PBMC, bone marrow, tumor microenvironment, and cross-species datasets. CyteType's agentic architecture consistently outperforms existing annotation methods:
+Across PBMC, bone marrow, tumor microenvironment, and cross-species datasets, the multi-agent approach outperforms existing annotation methods:
 
-| Comparison | Improvement |
-|------------|-------------|
-| vs GPTCellType | +388% |
-| vs CellTypist | +268% |
-| vs SingleR | +101% |
+| Compared with | Improvement |
+|---------------|-------------|
+| GPTCellType | +388% |
+| CellTypist | +268% |
+| SingleR | +101% |
 
-<img width="500" alt="CyteType benchmark comparison against GPTCellType CellTypist SingleR" src="https://github.com/user-attachments/assets/a63cadc1-d8c5-4ac0-bba7-af36f9b3c46d" />
+Methods and full results are in the [preprint](https://www.biorxiv.org/content/10.1101/2025.11.06.686964v1). You can also [browse results on atlas-scale datasets](docs/examples.md).
 
-[Browse CyteType results on atlas scale datasets](docs/examples.md)
+## Resources
 
----
+- 🔐 [CLI and Authentication](docs/cli.md): Set up API keys and manage saved credentials.
+- ⚙️ [Configuration](docs/configuration.md): Customize annotation settings, LLM providers, and artifacts.
+- 📋 [Output Columns](docs/results.md): Understand annotations and metadata added to AnnData.
+- 🛠️ [Troubleshooting](docs/troubleshooting.md): Resolve authentication, API, artifact, and LLM issues.
+- 🧑‍💻 [Development](docs/development.md): Configure a local environment and contribute.
+- 🎥 [Introduction video](https://vimeo.com/nygen/cytetype): Watch a quick overview of CyteType.
+- 💬 [Discord community](https://discord.gg/V6QFM4AN): Ask questions and get support.
 
 ## Citation
-
-If you use CyteType in your research, please cite our preprint:
 
 > Ahuja G, Antill A, Su Y, Dall'Olio GM, Basnayake S, Karlsson G, Dhapola P. Multi-agent AI enables evidence-based cell annotation in single-cell transcriptomics. *bioRxiv* 2025. doi: [10.1101/2025.11.06.686964](https://www.biorxiv.org/content/10.1101/2025.11.06.686964v1)
 
@@ -151,12 +119,8 @@ If you use CyteType in your research, please cite our preprint:
 }
 ```
 
----
-
 ## License
 
 CyteType is free for academic and non-commercial research under [CC BY-NC-SA 4.0](LICENSE.md).
 
 For commercial licensing, contact [contact@nygen.io](mailto:contact@nygen.io).
-
----

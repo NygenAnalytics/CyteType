@@ -172,10 +172,56 @@ def _print_setup_banner() -> None:
     print()
 
 
-def _run_setup(api_url: str) -> StoredCredentials:
+def _run_setup(api_url: str, force: bool = False) -> StoredCredentials:
     _print_setup_banner()
-    existing = load_credentials(api_url)
+    existing = None if force else load_credentials(api_url)
     if existing is not None:
+        try:
+            response = requests.get(
+                f"{api_url}/auth/cli/credentials",
+                headers={"Authorization": f"Bearer {existing.apiToken}"},
+                timeout=30,
+            )
+        except requests.RequestException as error:
+            raise RuntimeError("Could not validate the saved API key") from error
+
+        if not response.ok:
+            detail: object | None = None
+            error_code: str | None = None
+            try:
+                data = response.json()
+                if isinstance(data, dict):
+                    detail = data.get("detail")
+                    if isinstance(detail, dict):
+                        response_error_code = detail.get("error_code")
+                        if isinstance(response_error_code, str):
+                            error_code = response_error_code
+                        detail = detail.get("message")
+            except ValueError:
+                pass
+            message = str(detail) if detail else "Saved API key validation failed"
+            if error_code in {"INVALID_TOKEN", "TOKEN_INACTIVE"}:
+                message += (
+                    ". Run `cytetype setup --force` to re-authenticate with a new key"
+                )
+            raise RuntimeError(message)
+
+        try:
+            data = response.json()
+            if not isinstance(data, dict):
+                raise TypeError
+            existing = StoredCredentials(
+                apiUrl=api_url,
+                dashboardUrl=data["dashboardUrl"],
+                apiToken=existing.apiToken,
+                tokenId=data["tokenId"],
+                userId=data["userId"],
+                email=data["email"],
+            )
+        except (KeyError, TypeError, ValidationError, ValueError) as error:
+            raise RuntimeError("Server returned invalid CLI credentials") from error
+
+        save_credentials(existing)
         print(f"CyteType is already configured for {existing.email}.")
         dashboard_url = resolve_dashboard_url(existing)
         print(f"Dashboard:  {_ANSI_BLUE}{dashboard_url}{_ANSI_RESET}")
@@ -396,6 +442,11 @@ def _build_parser() -> argparse.ArgumentParser:
             f"{DEFAULT_API_URL}."
         ),
     )
+    setup.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-authenticate without validating saved credentials.",
+    )
     login = commands.add_parser(
         "login",
         help="Save and validate an existing API key.",
@@ -421,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command in {"setup", "get-key"}:
-            _run_setup(validate_api_url(args.api_url))
+            _run_setup(validate_api_url(args.api_url), force=args.force)
             return 0
 
         if args.command == "login":

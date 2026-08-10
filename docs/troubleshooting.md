@@ -7,7 +7,8 @@
 - For a custom server, use the same origin in the CLI and Python. For example, run `cytetype setup --api-url https://cytetype.example.org` and pass `api_url="https://cytetype.example.org"` to `CyteType`.
 - If the browser does not open during setup, copy the authorization URL printed in the terminal. Keep the command running while you authorize because it is waiting for a callback on `127.0.0.1`.
 - If setup times out, retry and complete authorization within five minutes. Check whether a local firewall or browser policy is blocking the callback to `127.0.0.1`.
-- If the credentials file is invalid or unreadable, run `cytetype logout` followed by `cytetype setup`.
+- If setup reports that the saved key is invalid or inactive, run `cytetype setup --force` to authenticate with a new key.
+- If the credentials file is invalid or unreadable, run `cytetype setup --force` or remove it with `cytetype logout` before retrying setup.
 - `cytetype logout` deletes only the local credentials. Revoke the API key from the dashboard if the server should stop accepting it.
 
 See [CLI and Authentication](./cli.md) for the full command reference and credential locations.

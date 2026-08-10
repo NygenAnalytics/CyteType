@@ -2,6 +2,7 @@ import os
 import stat
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlparse
 from urllib.request import urlopen
@@ -133,6 +134,8 @@ def test_help_and_get_key_alias(capsys: pytest.CaptureFixture[str]) -> None:
     assert "dashboard" in output
     assert "view" in output
     assert cli._build_parser().parse_args(["get-key"]).command == "get-key"
+    assert cli._build_parser().parse_args(["setup"]).force is False
+    assert cli._build_parser().parse_args(["get-key", "--force"]).force is True
 
 
 def test_setup_api_url_argument_overrides_environment(
@@ -150,6 +153,32 @@ def test_setup_api_url_argument_overrides_environment(
         == "https://explicit.example"
     )
     assert parser.parse_args(["login"]).api_url == "https://dev.cytetype.example"
+
+
+def test_get_key_force_reaches_setup(
+    monkeypatch: pytest.MonkeyPatch,
+    credentials: StoredCredentials,
+) -> None:
+    calls: list[tuple[str, bool]] = []
+
+    def fake_setup(api_url: str, force: bool = False) -> StoredCredentials:
+        calls.append((api_url, force))
+        return credentials
+
+    monkeypatch.setattr(cli, "_run_setup", fake_setup)
+
+    assert (
+        cli.main(
+            [
+                "get-key",
+                "--api-url",
+                "https://dev.cytetype.example",
+                "--force",
+            ]
+        )
+        == 0
+    )
+    assert calls == [("https://dev.cytetype.example", True)]
 
 
 def test_dashboard_url_uses_api_origin_only_when_origins_differ(
@@ -181,15 +210,40 @@ def test_setup_always_shows_nygen_banner_and_links(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     save_credentials(credentials)
 
+    response = SimpleNamespace(
+        ok=True,
+        json=lambda: {
+            "tokenId": "refreshed-token-id",
+            "userId": "refreshed-user-id",
+            "email": "current@university.edu",
+            "dashboardUrl": "https://dev.cytetype.example/dashboard",
+        },
+    )
+
+    def fake_get(
+        url: str,
+        headers: dict[str, str],
+        timeout: int,
+    ) -> SimpleNamespace:
+        assert url == "https://dev.cytetype.example/auth/cli/credentials"
+        assert headers == {"Authorization": f"Bearer {credentials.apiToken}"}
+        assert timeout == 30
+        return response
+
     def fail_browser_open(url: str) -> bool:
         pytest.fail(f"Existing setup should not open a browser: {url}")
 
+    monkeypatch.setattr(cli.requests, "get", fake_get)
     monkeypatch.setattr(cli, "_open_browser_silently", fail_browser_open)
 
     result = cli._run_setup(credentials.apiUrl)
 
     output = capsys.readouterr().out
-    assert result == credentials
+    assert result.apiToken == credentials.apiToken
+    assert result.tokenId == "refreshed-token-id"
+    assert result.userId == "refreshed-user-id"
+    assert result.email == "current@university.edu"
+    assert load_credentials() == result
     assert cli._NYGEN_GLYPHS["n"] == (
         "      ",
         "# ### ",
@@ -211,14 +265,74 @@ def test_setup_always_shows_nygen_banner_and_links(
         f"{cli._ANSI_BLUE}https://dev.cytetype.example/dashboard"
         f"{cli._ANSI_RESET}" in output
     )
+    assert credentials.apiToken not in output
+
+
+@pytest.mark.parametrize("error_code", ["INVALID_TOKEN", "TOKEN_INACTIVE"])
+def test_setup_rejects_invalid_saved_credentials_without_changing_them(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    credentials: StoredCredentials,
+    error_code: str,
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    save_credentials(credentials)
+
+    response = SimpleNamespace(
+        ok=False,
+        json=lambda: {
+            "detail": {
+                "error_code": error_code,
+                "message": "Saved API key is no longer valid",
+            }
+        },
+    )
+
+    monkeypatch.setattr(cli.requests, "get", lambda *args, **kwargs: response)
+    monkeypatch.setattr(
+        cli,
+        "_open_browser_silently",
+        lambda url: pytest.fail(f"Invalid setup should not open a browser: {url}"),
+    )
+
+    with pytest.raises(RuntimeError, match=r"cytetype setup --force"):
+        cli._run_setup(credentials.apiUrl)
+
+    assert load_credentials() == credentials
+
+
+def test_setup_reports_validation_network_errors_without_changing_credentials(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    credentials: StoredCredentials,
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    save_credentials(credentials)
+
+    def fail_validation(*args: object, **kwargs: object) -> None:
+        raise cli.requests.ConnectionError("offline")
+
+    monkeypatch.setattr(cli.requests, "get", fail_validation)
+    monkeypatch.setattr(
+        cli,
+        "_open_browser_silently",
+        lambda url: pytest.fail(f"Failed validation should not open a browser: {url}"),
+    )
+
+    with pytest.raises(RuntimeError, match="Could not validate the saved API key"):
+        cli._run_setup(credentials.apiUrl)
+
+    assert load_credentials() == credentials
 
 
 def test_setup_completes_callback_exchange_without_exposing_key(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    credentials: StoredCredentials,
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    save_credentials(credentials)
     opened_urls: list[str] = []
     callback_thread: threading.Thread | None = None
     exchange_body: dict[str, str] = {}
@@ -270,9 +384,16 @@ def test_setup_completes_callback_exchange_without_exposing_key(
         return True
 
     monkeypatch.setattr(cli.requests, "post", fake_post)
+    monkeypatch.setattr(
+        cli.requests,
+        "get",
+        lambda *args, **kwargs: pytest.fail(
+            "Forced setup must not validate saved credentials"
+        ),
+    )
     monkeypatch.setattr(cli, "_open_browser_silently", fake_browser_open)
 
-    result = cli._run_setup("https://dev.cytetype.example")
+    result = cli._run_setup("https://dev.cytetype.example", force=True)
 
     assert callback_thread is not None
     callback_thread.join(timeout=5)
@@ -474,7 +595,7 @@ def test_setup_keyboard_interrupt_exits_without_traceback(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def interrupt_setup(api_url: str) -> None:
+    def interrupt_setup(api_url: str, force: bool = False) -> None:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(cli, "_run_setup", interrupt_setup)
