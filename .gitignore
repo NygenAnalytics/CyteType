@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
+cytetype/_version.py
 
 .venv
 *.env

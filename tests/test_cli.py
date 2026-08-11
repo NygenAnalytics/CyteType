@@ -1,6 +1,7 @@
 import os
 import stat
 import threading
+from importlib.metadata import version as distribution_version
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.error import HTTPError
@@ -32,6 +33,10 @@ def credentials() -> StoredCredentials:
         userId="user-id",
         email="researcher@university.edu",
     )
+
+
+def test_public_version_matches_distribution_metadata() -> None:
+    assert cli.__version__ == distribution_version("cytetype")
 
 
 def test_credentials_round_trip_is_private_and_server_specific(

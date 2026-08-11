@@ -1,7 +1,6 @@
-__version__ = "0.19.5"
-
 import requests
 
+from ._version import __version__
 from .config import logger
 from .main import CyteType
 from .plotting import marker_dotplot

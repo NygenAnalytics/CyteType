@@ -43,7 +43,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools>=80.9.0", "wheel"]
+requires = ["setuptools>=80.9.0", "setuptools-scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -52,8 +52,14 @@ packages = {find = {}}
 [tool.setuptools.package-data]
 cytetype = ["templates/*.html"]
 
-[tool.setuptools.dynamic]
-version = {attr = "cytetype.__version__"}
+[tool.setuptools_scm]
+version_file = "cytetype/_version.py"
+
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { git = { commit = true, tags = true } },
+]
 
 [tool.mypy]
 strict = false
@@ -76,4 +82,4 @@ warn_unused_ignores = true
 
 ignore_missing_imports = false
 
-exclude = ["^build/", "^dist/", "^.*\\.egg-info/"]
+exclude = ["^build/", "^dist/", "^.*\\.egg-info/", "^cytetype/_version\\.py$"]
