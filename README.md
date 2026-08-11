@@ -23,6 +23,8 @@
 For Seurat workflows, use [CyteTypeR](https://github.com/NygenAnalytics/CyteTypeR).
 
 > [!IMPORTANT]
+> Already installed CyteType? Open a terminal and run `pip install -U cytetype` to update to the latest version before you start.
+>
 > CyteType requires an API key. Use is free for academic and non-commercial research. Commercial use requires a [license](#license).
 
 ## Quick Start
