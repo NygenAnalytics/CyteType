@@ -25,12 +25,12 @@ from .exceptions import (
     JobFailedError,
     LLMValidationError,
     ClientDisconnectedError,
+    TimeoutError,
     NetworkError,
 )
 
-# Importable by name, but left out of __all__ so `from cytetype.api import *`
-# does not shadow the builtin TimeoutError; CyteTypeTimeoutError is the alias.
-from .exceptions import TimeoutError as TimeoutError
+# The same class under the name that `cytetype` exports, which does not shadow the
+# builtin TimeoutError.
 from .exceptions import TimeoutError as CyteTypeTimeoutError
 
 __all__ = [
@@ -57,6 +57,9 @@ __all__ = [
     "JobFailedError",
     "LLMValidationError",
     "ClientDisconnectedError",
+    # `from cytetype.api import *` has always exported TimeoutError, shadowing the
+    # builtin, and code that catches it expects CyteType's class, so it stays.
+    "TimeoutError",
     "CyteTypeTimeoutError",
     "NetworkError",
 ]

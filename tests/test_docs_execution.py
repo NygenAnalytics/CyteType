@@ -14,6 +14,9 @@ from typing import Any
 import pytest
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+_KERNELSPEC = {"name": "python3", "display_name": "Python 3", "language": "python"}
+# Made up, in the format of a personal CyteType API key.
+_FAKE_API_KEY = "cyt_p_" + "Fake0Key" * 5
 
 
 def _require_docs_group() -> Any:
@@ -23,6 +26,17 @@ def _require_docs_group() -> Any:
     pytest.importorskip("nbclient")
     pytest.importorskip("ipykernel")
     return pytest.importorskip("nbformat")
+
+
+@pytest.fixture(autouse=True)
+def _no_local_secrets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep this machine's saved sign-in and secret-looking variables out of the checks."""
+    from docs import execute_docs
+
+    for name in list(os.environ):
+        if execute_docs.is_secret_name(name):
+            monkeypatch.delenv(name)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
 
 
 @pytest.fixture(scope="module")
@@ -527,3 +541,222 @@ def test_main_checks_all_sources_before_executing(
 def test_main_requires_pages(execution_source: Any, build_docs: Any) -> None:
     with pytest.raises(ValueError, match="Specify affected pages"):
         execution_source.main([])
+
+
+def _notebook_with_outputs(nbformat: Any, outputs: list[Any]) -> Any:
+    return nbformat.v4.new_notebook(
+        cells=[
+            nbformat.v4.new_markdown_cell("# Example"),
+            nbformat.v4.new_code_cell(
+                'print("RESULT")', execution_count=1, outputs=outputs
+            ),
+        ],
+        metadata={"kernelspec": _KERNELSPEC},
+    )
+
+
+def test_kernel_environment_drops_secret_looking_variables() -> None:
+    from docs import execute_docs
+
+    kept = {
+        "HOME": "/home/researcher",
+        "XDG_CONFIG_HOME": "/home/researcher/.config",
+        "PATH": "/usr/local/bin:/usr/bin",
+        "TMPDIR": "/scratch/tmp",
+        "CYTETYPE_API_URL": "https://cytetype.example",
+    }
+    dropped = {
+        "OPENAI_API_KEY": "sk-example",
+        "GITHUB_TOKEN": "ghp-example",
+        "aws_secret_access_key": "example",
+        "DB_PASSWORD": "example",
+        "MYSQL_PASSWD": "example",
+        "GOOGLE_APPLICATION_CREDENTIALS": "/home/researcher/service-account.json",
+        "Hf_Token": "example",
+    }
+    environment = {**kept, **dropped, "TQDM_DISABLE": "0"}
+
+    result = execute_docs.kernel_environment(environment)
+
+    assert result == {**kept, **execute_docs.KERNEL_ENVIRONMENT}
+    assert environment == {**kept, **dropped, "TQDM_DISABLE": "0"}
+
+
+def test_kernel_starts_without_secret_looking_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    nbformat = _require_docs_group()
+    from docs import execute_docs
+
+    monkeypatch.setenv("CYTETYPE_DOCS_TEST_TOKEN", "kept-out-of-the-kernel")
+    monkeypatch.setenv("CYTETYPE_API_URL", "https://cytetype.example")
+    names = ["CYTETYPE_DOCS_TEST_TOKEN", "CYTETYPE_API_URL", "XDG_CONFIG_HOME", "HOME"]
+    notebook = nbformat.v4.new_notebook(
+        cells=[
+            nbformat.v4.new_code_cell(
+                f"import os\nfor name in {names!r}:\n    print(os.environ.get(name))"
+            )
+        ],
+        metadata={"kernelspec": _KERNELSPEC},
+    )
+
+    result = execute_docs.execute_notebook(nbformat.writes(notebook))
+
+    # The kernel keeps what it needs to find the saved CyteType sign-in.
+    lines = nbformat.reads(result, as_version=4).cells[0].outputs[0].text.splitlines()
+    assert lines == [
+        "None",
+        "https://cytetype.example",
+        os.environ["XDG_CONFIG_HOME"],
+        str(os.environ.get("HOME")),
+    ]
+
+
+@pytest.mark.parametrize("place", ["stream", "split_stream", "html", "traceback"])
+def test_outputs_with_a_cytetype_api_key_are_refused(place: str) -> None:
+    nbformat = pytest.importorskip("nbformat")
+    from docs import execute_docs
+
+    new_output = nbformat.v4.new_output
+    if place == "stream":
+        outputs = [new_output("stream", name="stdout", text=f"{_FAKE_API_KEY}\n")]
+    elif place == "split_stream":
+        # Neither part matches on its own.
+        outputs = [
+            new_output("stream", name="stdout", text=f"Key: {_FAKE_API_KEY[:10]}"),
+            new_output("stream", name="stdout", text=f"{_FAKE_API_KEY[10:]}\n"),
+        ]
+    elif place == "html":
+        outputs = [
+            new_output(
+                "display_data",
+                data={"text/plain": "Table", "text/html": f"<td>{_FAKE_API_KEY}</td>"},
+            )
+        ]
+    else:
+        outputs = [
+            new_output(
+                "error",
+                ename="ValueError",
+                evalue="Invalid API token",
+                traceback=[f"auth_token = '{_FAKE_API_KEY}'"],
+            )
+        ]
+    notebook = _notebook_with_outputs(nbformat, outputs)
+
+    with pytest.raises(ValueError) as error:
+        execute_docs.check_outputs_for_secrets(notebook, environment={})
+
+    # Exact, so the message names the cell and never shows the key.
+    assert str(error.value) == (
+        "Refusing to save outputs that contain secrets: a CyteType API key in cell 2"
+    )
+
+
+def test_outputs_with_the_value_of_a_secret_variable_are_refused() -> None:
+    nbformat = pytest.importorskip("nbformat")
+    from docs import execute_docs
+
+    secret = "correct-horse-battery"
+    notebook = _notebook_with_outputs(
+        nbformat,
+        [
+            nbformat.v4.new_output(
+                "display_data", data={"text/plain": f"password: {secret}"}
+            ),
+            # Values of other variables, and values too short to check, may appear.
+            nbformat.v4.new_output(
+                "stream", name="stdout", text="/home/researcher 1234567\n"
+            ),
+        ],
+    )
+    environment = {
+        "DATABASE_PASSWORD": secret,
+        "HOME": "/home/researcher",
+        "SHORT_TOKEN": "1234567",
+    }
+
+    with pytest.raises(ValueError) as error:
+        execute_docs.check_outputs_for_secrets(notebook, environment)
+
+    assert str(error.value) == (
+        "Refusing to save outputs that contain secrets: "
+        "the value of DATABASE_PASSWORD in cell 2"
+    )
+
+
+def test_outputs_with_the_saved_api_key_are_refused() -> None:
+    nbformat = pytest.importorskip("nbformat")
+    from cytetype.config import StoredCredentials, save_credentials
+    from docs import execute_docs
+
+    # Not in the cyt_ format, so only the saved key itself identifies it.
+    key = "saved-key-0123456789abcdef"
+    save_credentials(
+        StoredCredentials(
+            apiUrl="https://cytetype.nygen.io",
+            apiToken=key,
+            tokenId="token-id",
+            userId="user-id",
+            email="researcher@university.edu",
+        )
+    )
+    notebook = _notebook_with_outputs(
+        nbformat, [nbformat.v4.new_output("stream", name="stderr", text=f"{key}\n")]
+    )
+
+    with pytest.raises(ValueError) as error:
+        execute_docs.check_outputs_for_secrets(notebook, environment={})
+
+    assert str(error.value) == (
+        "Refusing to save outputs that contain secrets: "
+        "the saved CyteType API key in cell 2"
+    )
+
+
+def test_outputs_without_secrets_are_accepted(
+    executed_notebook: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    nbformat = pytest.importorskip("nbformat")
+    from docs import execute_docs
+
+    monkeypatch.setenv("CYTETYPE_DOCS_TEST_TOKEN", "not-in-any-output")
+    notebook = nbformat.reads(executed_notebook[1], as_version=4)
+    notebook.cells[1].outputs.append(
+        nbformat.v4.new_output(
+            "display_data",
+            data={
+                "text/plain": "cytetype_annotation_leiden\n"
+                "https://cytetype.nygen.io/report/0123\n"
+                "Personal API keys start with cyt_p_.",
+                "text/html": "<th>cytetype_annotation_leiden</th>",
+            },
+        )
+    )
+
+    execute_docs.check_outputs_for_secrets(notebook)
+
+
+def test_main_refuses_to_save_outputs_with_secrets(
+    execution_source: Any,
+    executed_notebook: tuple[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    build_docs: Any,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    nbformat = pytest.importorskip("nbformat")
+
+    runner = execution_source
+    notebook = nbformat.reads(executed_notebook[1], as_version=4)
+    notebook.cells[1].outputs[0].text = f"RESULT {_FAKE_API_KEY}\n"
+    _execute_results(monkeypatch, runner, [nbformat.writes(notebook)])
+
+    with pytest.raises(SystemExit) as error:
+        runner.main(["example"])
+
+    assert str(error.value) == (
+        "Notebook execution failed:\nexample.ipynb: Refusing to save outputs that "
+        "contain secrets: a CyteType API key in cell 2"
+    )
+    assert _FAKE_API_KEY not in capsys.readouterr().out
+    assert (runner.SOURCE_DIR / "example.ipynb").read_text() == executed_notebook[0]

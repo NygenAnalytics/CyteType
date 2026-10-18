@@ -309,6 +309,23 @@ def test_notebook_outputs_contain_no_local_paths() -> None:
             assert not local_path.search(outputs), (page, index)
 
 
+def test_notebooks_contain_no_api_keys_or_bearer_tokens() -> None:
+    # Notebooks are published with their outputs. Report only where a match is, so that
+    # a failure does not print the key.
+    secret = re.compile(r"cyt_[A-Za-z0-9_-]{16,}|Bearer ")
+    found = []
+    for page in _pages():
+        if page.suffix != ".ipynb":
+            continue
+        notebook = json.loads(page.read_text())
+        if secret.search(json.dumps(notebook["metadata"])):
+            found.append((page.name, "metadata"))
+        for index, cell in enumerate(notebook["cells"], start=1):
+            if secret.search(json.dumps(cell)):
+                found.append((page.name, f"cell {index}"))
+    assert found == []
+
+
 def test_llm_configuration_reference_matches_the_schema() -> None:
     from cytetype.api.schemas import AgentType, LLMModelConfig, LLMProvider
 

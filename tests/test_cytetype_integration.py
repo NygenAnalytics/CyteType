@@ -5,7 +5,7 @@ import inspect
 import json
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import MagicMock, patch
 
 import anndata
@@ -1117,6 +1117,137 @@ def test_cytetype_run_rejects_invalid_visibility_before_upload(
     upload_vars.assert_not_called()
     submit.assert_not_called()
     assert "cytetype_jobDetails" not in ct.adata.uns
+
+
+# Keys in the server's formats. Personal keys have no organization license.
+PERSONAL_KEY = "cyt_p_" + "P" * 43
+ORGANIZATION_KEY = "cyt_" + "O" * 43
+PERSONAL_KEY_WARNING = (
+    "visibility='org' needs an organization API key, and this key looks like a "
+    "personal key (cyt_p_...). If it is, the server rejects the job after the upload. "
+    "Use an organization key, or choose 'private' or 'public'."
+)
+
+
+def _visibility_warnings(log_messages: list[tuple[str, str]]) -> list[str]:
+    # The test data also logs warnings about raw counts and unannotated clusters.
+    return [
+        message
+        for level, message in log_messages
+        if level == "WARNING" and "visibility" in message
+    ]
+
+
+@pytest.mark.parametrize("key_source", ["saved", "auth_token"])
+@patch("cytetype.main.wait_for_completion")
+@patch("cytetype.main.submit_annotation_job")
+def test_cytetype_run_warns_before_uploading_org_reports_with_a_personal_looking_key(
+    mock_submit: MagicMock,
+    mock_wait: MagicMock,
+    mock_adata: anndata.AnnData,
+    mock_api_response: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    log_messages: list[tuple[str, str]],
+    key_source: str,
+) -> None:
+    mock_submit.return_value = "job_org"
+    mock_wait.return_value = mock_api_response
+    fake_upload_vars = cytetype.main.upload_vars_h5_file
+    warnings_at_upload: list[list[str]] = []
+
+    def _upload_vars(*args: Any, **kwargs: Any) -> UploadResponse:
+        warnings_at_upload.append(_visibility_warnings(log_messages))
+        return fake_upload_vars(*args, **kwargs)
+
+    upload_vars = MagicMock(side_effect=_upload_vars)
+    monkeypatch.setattr("cytetype.main.upload_vars_h5_file", upload_vars)
+    if key_source == "saved":
+        monkeypatch.setattr(
+            "cytetype.main.load_credentials",
+            lambda api_url: _saved_credentials(PERSONAL_KEY),
+        )
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    ct.run(
+        study_context="Test",
+        auth_token=PERSONAL_KEY if key_source == "auth_token" else None,
+        save_query=False,
+        visibility="org",
+    )
+
+    # Logged once, before the upload and without the key. The prefix is not proof, so
+    # the run goes on and the server decides.
+    assert _visibility_warnings(log_messages) == [PERSONAL_KEY_WARNING]
+    assert warnings_at_upload == [[PERSONAL_KEY_WARNING]]
+    assert upload_vars.call_args.args[1] == PERSONAL_KEY
+    assert mock_submit.call_args.args[1] == PERSONAL_KEY
+    payload = mock_submit.call_args.args[2]
+    assert payload["visibility"] == "org"
+    assert payload["uploaded_files"] == {
+        "obs_duckdb": "obs_upload_123",
+        "vars_h5": "vars_upload_456",
+    }
+    assert ct.adata.uns["cytetype_jobDetails"]["visibility"] == "org"
+
+
+@pytest.mark.parametrize("key_source", ["saved", "auth_token"])
+@patch("cytetype.main.wait_for_completion")
+@patch("cytetype.main.submit_annotation_job")
+def test_cytetype_run_does_not_warn_for_org_reports_with_an_organization_key(
+    mock_submit: MagicMock,
+    mock_wait: MagicMock,
+    mock_adata: anndata.AnnData,
+    mock_api_response: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    log_messages: list[tuple[str, str]],
+    key_source: str,
+) -> None:
+    mock_submit.return_value = "job_org"
+    mock_wait.return_value = mock_api_response
+    if key_source == "saved":
+        monkeypatch.setattr(
+            "cytetype.main.load_credentials",
+            lambda api_url: _saved_credentials(ORGANIZATION_KEY),
+        )
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    ct.run(
+        study_context="Test",
+        auth_token=ORGANIZATION_KEY if key_source == "auth_token" else None,
+        save_query=False,
+        visibility="org",
+    )
+
+    assert _visibility_warnings(log_messages) == []
+    assert mock_submit.call_args.args[1] == ORGANIZATION_KEY
+    assert mock_submit.call_args.args[2]["visibility"] == "org"
+
+
+@pytest.mark.parametrize("visibility", ["private", "public", None])
+@patch("cytetype.main.wait_for_completion")
+@patch("cytetype.main.submit_annotation_job")
+def test_cytetype_run_does_not_warn_about_personal_keys_for_other_visibilities(
+    mock_submit: MagicMock,
+    mock_wait: MagicMock,
+    mock_adata: anndata.AnnData,
+    mock_api_response: dict[str, Any],
+    log_messages: list[tuple[str, str]],
+    visibility: Literal["private", "public"] | None,
+) -> None:
+    mock_submit.return_value = "job_personal"
+    mock_wait.return_value = mock_api_response
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    ct.run(
+        study_context="Test",
+        auth_token=PERSONAL_KEY,
+        save_query=False,
+        visibility=visibility,
+    )
+
+    assert _visibility_warnings(log_messages) == []
+    assert mock_submit.call_args.args[1] == PERSONAL_KEY
+    assert mock_submit.call_args.args[2].get("visibility") == visibility
 
 
 def test_visibility_is_the_last_run_parameter() -> None:

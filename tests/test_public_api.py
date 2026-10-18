@@ -1,5 +1,6 @@
 """Public names, provider list and server error-code mapping."""
 
+import builtins
 from typing import Any
 
 import pytest
@@ -39,8 +40,9 @@ def test_timeout_error_is_exported_without_shadowing_the_builtin() -> None:
     assert "TimeoutError" not in cytetype.__all__
 
     namespace: dict[str, Any] = {}
-    exec("from cytetype import *", namespace)
+    exec("from cytetype import *\nresolved = TimeoutError", namespace)
     assert "TimeoutError" not in namespace
+    assert namespace["resolved"] is builtins.TimeoutError
     assert namespace["CyteTypeTimeoutError"] is exceptions.TimeoutError
 
 
@@ -56,18 +58,27 @@ def test_client_disconnected_error_is_exported_from_api() -> None:
     assert cytetype.api.ClientDisconnectedError is exceptions.ClientDisconnectedError
 
 
-def test_api_timeout_error_is_importable_but_not_star_exported() -> None:
+def test_api_star_import_exports_the_timeout_error_under_both_names() -> None:
     from cytetype.api import TimeoutError as ApiTimeoutError
 
     assert ApiTimeoutError is exceptions.TimeoutError
     assert cytetype.api.CyteTypeTimeoutError is exceptions.TimeoutError
-    assert "TimeoutError" not in cytetype.api.__all__
+    assert "TimeoutError" in cytetype.api.__all__
     assert "CyteTypeTimeoutError" in cytetype.api.__all__
 
+    # Code written for earlier releases catches TimeoutError after the star import.
     namespace: dict[str, Any] = {}
-    exec("from cytetype.api import *", namespace)
-    assert "TimeoutError" not in namespace
+    exec(
+        "from cytetype.api import *\n"
+        "try:\n"
+        "    raise CyteTypeTimeoutError('Job did not complete')\n"
+        "except TimeoutError as error:\n"
+        "    caught = error\n",
+        namespace,
+    )
+    assert namespace["TimeoutError"] is exceptions.TimeoutError
     assert namespace["CyteTypeTimeoutError"] is exceptions.TimeoutError
+    assert type(namespace["caught"]) is exceptions.TimeoutError
 
 
 def test_authentication_required_maps_to_authentication_error() -> None:

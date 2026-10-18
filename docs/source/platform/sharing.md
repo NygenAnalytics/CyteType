@@ -44,7 +44,7 @@ obj <- CyteTypeR(
 ::::
 
 :::{warning}
-Organization visibility needs an organization API key (`cyt_...`). A personal key is refused even if your account belongs to an organization. The server checks this only when the job is submitted, which happens after your files are uploaded: with a personal key, the run stops with an `APIError` ("Org visibility requires an organization license"; in R, `Job submission failed: [HTTP_ERROR] Org visibility requires an organization license`), no job is created and the upload is discarded. Run it again with an organization key, or submit it as private and change the visibility in the dashboard.
+Organization visibility needs an organization API key (`cyt_...`). A personal key (`cyt_p_...`) is refused even if your account belongs to an organization. When the key looks like a personal key, both clients warn before they upload your files, but only the server decides, when the job is submitted, after the upload: with a key that has no organization license, the run stops with an `APIError` with the code `HTTP_ERROR` ("Org visibility requires an organization license"; in R, `Job submission failed: [HTTP_ERROR] Org visibility requires an organization license`), no job is created and the upload is discarded. Run it again with an organization key, or submit it as private and change the visibility in the dashboard.
 :::
 
 ## Change the visibility later

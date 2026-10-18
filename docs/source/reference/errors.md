@@ -54,7 +54,7 @@ Every CyteType exception has two attributes:
 
 A few points to keep in mind:
 
-- **`CyteTypeTimeoutError` is not Python's built-in `TimeoutError`.** An `except TimeoutError:` clause does not catch it. Catch `CyteTypeTimeoutError` or `CyteTypeError`. The class is also available as `cytetype.api.TimeoutError`.
+- **`CyteTypeTimeoutError` is not Python's built-in `TimeoutError`.** An `except TimeoutError:` clause with the built-in class does not catch it. Catch `CyteTypeTimeoutError` or `CyteTypeError`. `cytetype.api` exports the class under both names, `CyteTypeTimeoutError` and `TimeoutError`, so after `from cytetype.api import *` the name `TimeoutError` means CyteType's class instead of the built-in one. `from cytetype import *` imports only `CyteTypeTimeoutError`.
 - **Codes without their own class** (for example `INTERNAL_ERROR`, `HTTP_ERROR` and `REPORT_DELETED`) raise a plain `APIError`. Check `err.error_code` to tell them apart.
 - **`JobNotFoundError` is rarely raised.** When the results of a job cannot be found, the client raises a plain `APIError` with `error_code == "JOB_NOT_FOUND"`. Check the code rather than the class.
 - **`get_results()` does not raise server errors.** If fetching fails, it logs the reason (for example "Failed to retrieve results for job ...") and returns `None`. It raises only `AuthenticationError` when no API key is available for the job's server, and `ValueError` when the server address stored with the job is not valid.
@@ -81,10 +81,10 @@ With `require_artifacts=True` (the default), a failure while building or uploadi
 `run()` works through these steps in order, so the step tells you how far a job got:
 
 1. **Checks on the arguments and the `CyteType` object:** `ValueError`.
-2. **Finding your API key:** `AuthenticationError` with `AUTHENTICATION_REQUIRED` if no key is saved for the server and none was passed.
+2. **Finding your API key:** `AuthenticationError` with `AUTHENTICATION_REQUIRED` if no key is saved for the server and none was passed. With `visibility="org"` and a key that looks like a personal key (`cyt_p_...`), `run()` then logs a warning; only the server can refuse the key, at step 5.
 3. **Validating the request:** `pydantic.ValidationError`.
 4. **Uploading `vars.h5` and `obs.duckdb`:** a rejected key raises `AuthenticationError` and a refused account (for example an expired license) raises `AuthorizationError`, even with `require_artifacts=False`. Other upload failures raise only with `require_artifacts=True`.
-5. **Submitting the job:** `RateLimitError`, `QuotaExceededError`, `LLMValidationError`, or `APIError` (for example when `visibility="org"` is used with a personal API key instead of an organization key). All job limits and quotas are checked here, after the upload, so fixing these errors means uploading again.
+5. **Submitting the job:** `RateLimitError`, `QuotaExceededError`, `LLMValidationError`, or `APIError` (for example "Org visibility requires an organization license" when `visibility="org"` is used with a key that has no organization license, such as a personal API key). All job limits and quotas are checked here, after the upload, so fixing these errors means uploading again.
 6. **Waiting for the job:** `JobFailedError` if the job fails, `CyteTypeTimeoutError` if it does not finish within `timeout_seconds`. Brief network problems while waiting are retried. Once the job has been submitted, its ID is stored in `adata.uns` and you can fetch the results later with `get_results()`.
 
 (errors-codes)=
@@ -306,6 +306,7 @@ Other messages you may see:
 - **Polling stopped:** a `cytetype_api_error` "Stopping after 5 consecutive errors: ..." with "The job may still be running; retrieve its results later with GetResults(job_id = "<job_id>").", or the simple error "Job '...' not found after 5 attempts. Verify the job_id is correct." When the server cannot be reached, `CyteTypeR()` keeps retrying until `timeout_seconds` runs out instead.
 - **Results not fetched:** `GetResults()` signals a `cytetype_api_error` with the reason, for example "Error while checking job status: HTTP 410 [REPORT_DELETED] This report has been deleted by the owner" (with `e$error_code` set to `"REPORT_DELETED"`); a failed results request reads "Error while fetching job results: ...". While a job is still running, and for a job ID the server does not know, it returns `NULL` with a message instead.
 - **Upload failures:** for example "Upload chunk 3 failed: ..." or "Upload complete failed: ...".
+- **Organization visibility:** with `visibility = "org"` and a key that looks like a personal key (`cyt_p_...`), `CyteTypeR()` warns before the upload. If the key has no organization license, the server then refuses the job with `Job submission failed: [HTTP_ERROR] Org visibility requires an organization license`.
 - **Checks before submission:** for example "All infoTags values must be character strings", "n_parallel_clusters must be between 1 and 50", "visibility must be "private", "org", "public" or NULL", "Results with prefix 'cytetype' already exist in this object ...", "Artifact build did not succeed. Set require_artifacts = FALSE to continue without artifacts." and the `llm_configs` checks, such as "provider must be one of: ..." or "Either apiKey or all AWS credentials must be provided". See [Troubleshooting](../support/troubleshooting.md).
 
 (errors-r-example)=

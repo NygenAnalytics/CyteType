@@ -24,6 +24,8 @@ except QuotaExceededError as error:
 `CyteTypeTimeoutError` is the client's own `TimeoutError` class from
 `cytetype.api.exceptions`. The package exports it under this name so that
 `from cytetype import *` does not hide Python's built-in `TimeoutError`.
+`cytetype.api` exports the class as `CyteTypeTimeoutError` and, as in earlier releases,
+as `TimeoutError`, so `from cytetype.api import *` does hide the built-in class.
 [Errors and error codes](../reference/errors) explains what to do about each error.
 
 ```{eval-rst}

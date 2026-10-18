@@ -397,11 +397,13 @@ pbmc <- CyteTypeR(
 
 ### "Org visibility requires an organization license"
 
-**You see (R):** `Job submission failed: [HTTP_ERROR] Org visibility requires an organization license`
+**You see (Python):** before the upload, the warning `visibility='org' needs an organization API key, and this key looks like a personal key (cyt_p_...). If it is, the server rejects the job after the upload. Use an organization key, or choose 'private' or 'public'.` After the upload, `run()` raises an `APIError` with the code `HTTP_ERROR`: "Org visibility requires an organization license".
 
-**Why:** you passed `visibility="org"` (R: `visibility = "org"`) with an API key that does not belong to an organization license. Only organization API keys (starting with `cyt_`, created by an organization admin) can submit organization reports. A personal key, including the one that `cytetype setup` or `SetupCyteTypeR()` saves, is refused even if your account belongs to an organization. The server checks this when the job is submitted, after the files are uploaded. Python raises an `APIError` with the code `HTTP_ERROR`.
+**You see (R):** before the upload, the warning `visibility = "org" needs an organization API key, and this key looks like a personal key (cyt_p_...). If it is, the server rejects the job after the upload. Use an organization key, or choose "private" or "public".` After the upload, `Job submission failed: [HTTP_ERROR] Org visibility requires an organization license`.
 
-**Fix:** run `run()` (R: `CyteTypeR()`) again with an organization key as `auth_token`, or without `visibility` (the report is then private). The files are uploaded again. See [Visibility and sharing](../platform/sharing.md).
+**Why:** you passed `visibility="org"` (R: `visibility = "org"`) with an API key that does not belong to an organization license. Only organization API keys (starting with `cyt_`, created by an organization admin) can submit organization reports. A personal key (starting with `cyt_p_`), including the one that `cytetype setup` or `SetupCyteTypeR()` saves, is refused even if your account belongs to an organization. A few organization keys also start with `cyt_p_` by chance, so the clients only warn; the server decides when the job is submitted, after the files are uploaded.
+
+**Fix:** run `run()` (R: `CyteTypeR()`) again with an organization key as `auth_token`, or without `visibility` (the report is then private). The files are uploaded again. If you see the warning, you can interrupt the run instead of waiting for the upload and the refusal. See [Visibility and sharing](../platform/sharing.md).
 
 ### The client stopped waiting, or your session ended
 

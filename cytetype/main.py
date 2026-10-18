@@ -46,6 +46,11 @@ from .preprocessing.validation import (
 
 __all__ = ["CyteType"]
 
+# The server gives API keys without an organization license this prefix and refuses
+# organization visibility for them. Organization keys are "cyt_" and random characters,
+# so about 1 in 4096 of them also starts with it: the prefix alone is not proof.
+_PERSONAL_API_KEY_PREFIX = "cyt_p_"
+
 
 def _get_cytetype_version() -> str | None:
     try:
@@ -639,10 +644,12 @@ class CyteType:
                 Defaults to False.
             visibility (Literal["private", "org", "public"] | None, optional): Who can view the
                 report. Defaults to None, which uses the server default ("private"). "org" shares
-                the report with your organization and must be submitted with an organization API
-                key; with a personal key, the server rejects the job after the artifacts are
-                uploaded. "public" makes the report viewable by anyone with the link, and any
-                signed-in CyteType user can find it in Chat's report search.
+                the report with your organization and needs an organization API key. With a key
+                that looks like a personal key (starting with `cyt_p_`), a warning is logged
+                before the artifacts are uploaded. The server rejects "org" for any key without
+                an organization license, such as a personal key, when the job is submitted,
+                after the upload. "public" makes the report viewable by anyone with the link, and
+                any signed-in CyteType user can find it in Chat's report search.
 
         Returns:
             anndata.AnnData: The AnnData object the results were added to. This is the object passed
@@ -719,6 +726,14 @@ class CyteType:
         if api_url is not None:
             self.api_url = validate_api_url(api_url)
         token = self._resolve_auth_token(self.api_url, auth_token)
+        # The server refuses a personal key only at submission, after the upload, so warn
+        # now. The prefix is not proof, so the run goes on and the server decides.
+        if visibility == "org" and token.startswith(_PERSONAL_API_KEY_PREFIX):
+            logger.warning(
+                "visibility='org' needs an organization API key, and this key looks like "
+                "a personal key (cyt_p_...). If it is, the server rejects the job after "
+                "the upload. Use an organization key, or choose 'private' or 'public'."
+            )
         if upload_timeout_seconds <= 0:
             raise ValueError("upload_timeout_seconds must be greater than 0")
 

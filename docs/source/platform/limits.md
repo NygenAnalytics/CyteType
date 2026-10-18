@@ -55,7 +55,7 @@ The clients upload your data files before they submit the job:
 1. When an upload starts, the server checks that your API key is valid and active and that its organization's license has not expired.
 2. When the job is submitted, after the upload, the server checks your personal limits, the key's quota, the organization's quota and the requested visibility.
 
-A job refused at step 2 does not run, and its upload is lost: you upload again when you resubmit. Before submitting a large dataset, check the Account page.
+A job refused at step 2 does not run, and its upload is lost: you upload again when you resubmit. Before submitting a large dataset, check the Account page. Organization visibility needs a key with an organization license; when you request it with a key that looks like a personal key (`cyt_p_...`), both clients warn before the upload.
 
 ## Data and upload limits
 
@@ -137,7 +137,7 @@ When an hourly limit is reached, the tool returns a message such as "Rate limit 
 | Key quota too small for the job | `QUOTA_EXCEEDED` | `QuotaExceededError` | The same message, without the last sentence |
 | Organization license expired | `LICENSE_EXPIRED` | `AuthorizationError` | "License has expired. Please contact your organization admin(s): ..." |
 | Key disabled | `TOKEN_INACTIVE` | `AuthenticationError` | "API token has expired or been deactivated" |
-| Organization visibility with a personal key | `HTTP_ERROR` | `APIError` | "Org visibility requires an organization license" |
+| Organization visibility with a key without an organization license, such as a personal key | `HTTP_ERROR` | `APIError` | "Org visibility requires an organization license" |
 | Upload file too large | (checked by the client) | `ValueError` | "... exceeds upload limit: ..." |
 | Job stopped after 4 hours | (job status) | `JobFailedError` | "Job ... failed" |
 | Client stopped waiting | (checked by the client) | `CyteTypeTimeoutError` | "Job ... did not complete within ...s" |

@@ -248,7 +248,7 @@ With `save_query=True` (the default), each run writes the request to `query_file
 
 ### `visibility`
 
-`visibility` sets who can open the report: `"private"` (the default), `"org"` or `"public"`. Organization visibility needs an organization API key, issued under your organization's license. The personal key that `cytetype setup` or `SetupCyteTypeR()` saves is refused, even if your account belongs to an organization, and the server checks this only at submission, after the upload. You can also change the visibility in the dashboard at any time. See [Visibility and sharing](../platform/sharing.md).
+`visibility` sets who can open the report: `"private"` (the default), `"org"` or `"public"`. Organization visibility needs an organization API key, issued under your organization's license. The personal key that `cytetype setup` or `SetupCyteTypeR()` saves (`cyt_p_...`) is refused, even if your account belongs to an organization. Both clients warn before the upload when the key looks like a personal key, but the server checks the key only at submission, after the upload. You can also change the visibility in the dashboard at any time. See [Visibility and sharing](../platform/sharing.md).
 
 ### `n_parallel_clusters`
 
@@ -262,9 +262,9 @@ The number of clusters annotated at the same time, from 1 to 50 (default 2). It 
 | Personal usage limit reached | `RateLimitError` | Error with the server's message |
 | Organization quota used up | `QuotaExceededError` | Error with the server's message |
 | One of your own models failed the test | `LLMValidationError` | `Job submission failed: [LLM_VALIDATION_FAILED] ...` |
-| `visibility="org"` with a personal API key | `APIError` (code `HTTP_ERROR`) | `Job submission failed: [HTTP_ERROR] Org visibility requires an organization license` |
+| `visibility="org"` with a key without an organization license, such as a personal API key | `APIError` (code `HTTP_ERROR`) | `Job submission failed: [HTTP_ERROR] Org visibility requires an organization license` |
 
-A missing or rejected API key is caught before the files are uploaded. The other checks run at submission, so when a job is refused for them, the upload time has already been spent, and the files are uploaded again when you resubmit. The message for a personal limit says which limit you reached and when it resets. See [Usage limits and quotas](../platform/limits.md) for the limits, and [Errors and error codes](../reference/errors.md) for every error.
+A missing or rejected API key is caught before the files are uploaded. The other checks run at submission, so when a job is refused for them, the upload time has already been spent, and the files are uploaded again when you resubmit. For `visibility="org"` with a key that looks like a personal key (`cyt_p_...`), both clients warn before the upload, so you can interrupt the run and change the key or the visibility. The message for a personal limit says which limit you reached and when it resets. See [Usage limits and quotas](../platform/limits.md) for the limits, and [Errors and error codes](../reference/errors.md) for every error.
 
 ## Next steps
 

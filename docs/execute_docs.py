@@ -6,6 +6,10 @@ that calls ``CyteType.run()`` submits a real annotation job: it needs a saved Cy
 sign-in (``cytetype setup``), counts toward the account's limits, and waits for the job
 to finish on CyteType's servers.
 
+Outputs are published, so the kernel does not get environment variables whose names
+look secret, and a page whose outputs contain a CyteType API key or another known
+secret is not saved.
+
 Run it from the repository root with the documentation dependencies, for example
 ``uv run --group docs python -m docs.execute_docs --pages "quickstart"``, or through
 ``make -C docs execute-docs PAGES="quickstart"``.
@@ -13,9 +17,12 @@ Run it from the repository root with the documentation dependencies, for example
 
 import argparse
 import os
+import re
+from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
 DOCS_ROOT = Path(__file__).resolve().parent
 SOURCE_DIR = DOCS_ROOT / "source"
@@ -31,6 +38,17 @@ KERNEL_ENVIRONMENT = {
     "NO_COLOR": "1",
     "MPLBACKEND": "module://matplotlib_inline.backend_inline",
 }
+
+# The kernel does not get variables with these words in their names, so a page cannot
+# print them. It reads the CyteType sign-in from the credentials file under HOME or
+# XDG_CONFIG_HOME, which it keeps, as it keeps PATH and TMPDIR.
+SECRET_NAME = re.compile("KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL", re.IGNORECASE)
+# Variables that the notebooks need and that are not secret, whatever their names.
+KERNEL_ENVIRONMENT_ALLOWLIST = frozenset({"CYTETYPE_API_URL"})
+# CyteType API keys: organization keys start with cyt_ and personal keys with cyt_p_.
+API_KEY = re.compile(r"cyt_[A-Za-z0-9_-]{16,}")
+# Shorter values, such as flags, are too common to look for in outputs.
+MIN_SECRET_LENGTH = 8
 
 
 def page_path(name: str) -> Path:
@@ -107,6 +125,104 @@ def add_execution_timings(notebook) -> None:
         )
 
 
+def is_secret_name(name: str) -> bool:
+    """Return whether the environment variable ``name`` may hold a secret."""
+    return name not in KERNEL_ENVIRONMENT_ALLOWLIST and bool(SECRET_NAME.search(name))
+
+
+def kernel_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    """Return ``environment`` without its secret-looking variables, for the kernel."""
+    kept = {
+        name: value for name, value in environment.items() if not is_secret_name(name)
+    }
+    return {**kept, **KERNEL_ENVIRONMENT}
+
+
+def saved_api_key() -> str | None:
+    """Return the API key that ``cytetype setup`` saved, or None if none can be read."""
+    try:
+        from cytetype.config import load_credentials
+
+        credentials = load_credentials()
+    except Exception:
+        return None
+    return None if credentials is None else credentials.apiToken
+
+
+def _strings(value: object) -> Iterator[str]:
+    """Yield the strings in a notebook field: text, lists of lines and JSON data."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        # Notebook files can store text as a list of lines.
+        yield "".join(item for item in value if isinstance(item, str))
+        for item in value:
+            if not isinstance(item, str):
+                yield from _strings(item)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield str(key)
+            yield from _strings(item)
+
+
+def output_texts(cell: Mapping[str, Any]) -> Iterator[str]:
+    """Yield the text of a cell's outputs: streams, errors and every data format."""
+    streams: dict[str, list[str]] = {}
+    for output in cell.get("outputs", []):
+        if output.get("output_type") == "stream":
+            chunks = streams.setdefault(output.get("name", ""), [])
+            chunks.extend(_strings(output.get("text")))
+        for field in ("text", "ename", "evalue", "traceback", "data"):
+            yield from _strings(output.get(field))
+    # A stream can arrive split over several outputs, so also check each one whole.
+    for chunks in streams.values():
+        yield "".join(chunks)
+
+
+def check_outputs_for_secrets(
+    notebook: Any, environment: Mapping[str, str] | None = None
+) -> None:
+    """Raise ValueError if outputs hold a secret, naming where but never the secret.
+
+    Looks for CyteType API keys, the values of secret-looking variables in
+    ``environment`` (by default, this process's environment) and the saved API key,
+    which the kernel can read from the credentials file.
+    """
+    if environment is None:
+        environment = os.environ
+    # Map each secret to the description that the error shows instead of it.
+    descriptions = {
+        value: f"the value of {name}"
+        for name, value in environment.items()
+        if is_secret_name(name) and len(value) >= MIN_SECRET_LENGTH
+    }
+    api_key = saved_api_key()
+    if api_key and len(api_key) >= MIN_SECRET_LENGTH:
+        descriptions[api_key] = "the saved CyteType API key"
+    places = [
+        (f"cell {index}", output_texts(cell))
+        for index, cell in enumerate(notebook.cells, start=1)
+    ]
+    # Widget state, such as the text of progress bars, is saved in the metadata.
+    places.append(("the widget state", _strings(notebook.metadata.get("widgets"))))
+    leaks = []
+    for place, texts in places:
+        found = set()
+        for text in texts:
+            if API_KEY.search(text):
+                found.add("a CyteType API key")
+            found.update(
+                description
+                for secret, description in descriptions.items()
+                if secret in text
+            )
+        leaks.extend(f"{description} in {place}" for description in sorted(found))
+    if leaks:
+        raise ValueError(
+            "Refusing to save outputs that contain secrets: " + "; ".join(leaks)
+        )
+
+
 def execute_notebook(source: str) -> str:
     import nbformat
     from jupyter_client.kernelspec import KernelSpecManager
@@ -139,7 +255,7 @@ def execute_notebook(source: str) -> str:
             allow_errors=False,
             record_timing=True,
             resources={"metadata": {"path": working_directory}},
-        ).execute(cleanup_kc=True, env={**os.environ, **KERNEL_ENVIRONMENT})
+        ).execute(cleanup_kc=True, env=kernel_environment(os.environ))
     notebook.metadata["executed_at"] = datetime.now(UTC).isoformat()
     return nbformat.writes(notebook)
 
@@ -175,6 +291,7 @@ def main(pages: list[str]) -> None:
             notebook.metadata["executed_code_sha256"] = fingerprint
             validate_execution(notebook, relative)
             add_execution_timings(notebook)
+            check_outputs_for_secrets(notebook)
             with TemporaryDirectory(prefix=f".{path.stem}-", dir=path.parent) as work:
                 temporary = Path(work) / path.name
                 nbformat.write(notebook, temporary)

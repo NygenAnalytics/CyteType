@@ -121,6 +121,12 @@ environment, which uses the checkout's `cytetype`, from a temporary working dire
 downloads, `vars.h5`, `obs.duckdb` and `query.json` never land in the repository. The kernel
 runs with `TQDM_DISABLE=1`, so progress bars stay out of the published outputs.
 
+Outputs are published, so the kernel does not get environment variables whose names contain
+`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD` or `CREDENTIAL`; it reads the CyteType sign-in
+from the credentials file under `HOME` or `XDG_CONFIG_HOME`. The runner also refuses to save a
+page whose outputs contain a CyteType API key (`cyt_...`), the saved API key or the value of
+such a variable in your environment. The error names the cell, never the secret.
+
 Each successful execution atomically replaces the same `.ipynb` file in `docs/source/` and
 records `metadata.executed_at` and `metadata.executed_code_sha256`. The latter identifies the
 executed code; do not edit this fingerprint by hand. A failed page leaves its previous notebook
@@ -147,6 +153,6 @@ make -C docs check-reference
 The API check is a nitpicky, warnings-as-errors Sphinx build. Its inventory must document every
 `cytetype.__all__` export under its public `cytetype.` name, and every public `CyteType`
 member exactly once. The structure tests check the table of contents, `llms.txt`, relative
-links, tabs, that pages hold no HTML comments, notebook comments, and that the LLM configuration reference
-matches `cytetype.api.LLMModelConfig`. Inspect the rendered pages after changing execution or
+links, tabs, that pages hold no HTML comments, notebook comments, that notebooks hold no API
+keys, and that the LLM configuration reference matches `cytetype.api.LLMModelConfig`. Inspect the rendered pages after changing execution or
 presentation.

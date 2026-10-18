@@ -177,7 +177,7 @@ CyteTypeR(
 | `require_artifacts` | Logical. If `TRUE`, an error during artifact build or upload stops the run; if `FALSE`, failures are skipped and annotation continues without artifacts. Default is `TRUE`. |
 | `show_progress` | Logical. Whether to show progress (spinner and cluster status). Set `FALSE` to disable. Default is `TRUE`. |
 | `override_existing_results` | Logical. If `TRUE`, allow overwriting existing results with the same `results_prefix`. If `FALSE` and results exist, an error is raised. Default is `FALSE`. |
-| `visibility` | Optional character. Who can view the report: `"private"`, `"org"` (your organization; needs an organization API key) or `"public"` (anyone with the link). Default is `NULL`, which uses the server default (`"private"`). |
+| `visibility` | Optional character. Who can view the report: `"private"`, `"org"` (your organization; needs an organization API key) or `"public"` (anyone with the link). Default is `NULL`, which uses the server default (`"private"`). With `"org"` and an API key that looks like a personal key (it starts with `cyt_p_`), a warning is logged before the files are uploaded and the run continues; the server checks the key when the job is submitted and rejects personal keys. |
 
 **Value**
 
@@ -200,7 +200,7 @@ The function performs the following workflow:
 
 The evidence columns of the results table (`justification`, `supportingMarkers`, `conflictingMarkers`, `missingExpression` and `unexpectedExpression`) are filled from the structured output of current jobs when the stored fields are empty. `supportingMarkers` and `conflictingMarkers` list genes separated by `"; "`.
 
-While waiting, network errors are retried until `timeout_seconds` is reached. Other errors while checking the job stop the run after five in a row, and an error while fetching the results of a completed job stops it at once; both signal a [`cytetype_api_error()`](#r-api-cytetype-api-error) condition. If the run stops or is interrupted, the job keeps running on the server: retrieve its results with `GetResults(job_id = "<job_id>")`, using the job ID printed when the job was submitted.
+While waiting, network errors are retried until `timeout_seconds` is reached. Other errors while checking the job stop the run after five in a row. When the results of a completed job cannot be fetched, the rate limit and server errors (HTTP 500, 502, 503 and 504) are retried in the same way, and other errors, such as a deleted report (HTTP 410), stop the run at once. These errors signal a [`cytetype_api_error()`](#r-api-cytetype-api-error) condition. If the run stops or is interrupted, the job keeps running on the server: retrieve its results with `GetResults(job_id = "<job_id>")`, using the job ID printed when the job was submitted.
 
 **Examples**
 
@@ -522,12 +522,12 @@ The condition that CyteTypeR signals when the status or the results of a job can
 
 *Custom API Error*
 
-Creates the condition that CyteTypeR signals when the status or the results of a job cannot be fetched: by [`GetResults()`](#r-api-getresults), and by [`CyteTypeR()`](#r-api-cytetyper) when it stops waiting for a job after repeated errors. Errors about the API key are signalled as `cytetype_auth_error`, a subclass.
+Creates the condition that CyteTypeR signals when the status or the results of a job cannot be fetched: by [`GetResults()`](#r-api-getresults), and by [`CyteTypeR()`](#r-api-cytetyper) when it stops waiting for a job because of such errors. Errors about the API key are signalled as `cytetype_auth_error`, a subclass.
 
 **Usage**
 
 ```r
-cytetype_api_error(message, call = NULL, error_code = NULL)
+cytetype_api_error(message, call = NULL, error_code = NULL, status_code = NULL)
 ```
 
 **Arguments**
@@ -537,10 +537,11 @@ cytetype_api_error(message, call = NULL, error_code = NULL)
 | `message` | Error message. |
 | `call` | Where the error came from: `"network"` when the server could not be reached, `"api"` for other errors. Default is `NULL`. |
 | `error_code` | The error code the server sent, such as `"REPORT_DELETED"`, or `NULL` when there is none. Default is `NULL`. |
+| `status_code` | The HTTP status of the server's response, such as `503`, or `NULL` when there is none, for example when the server could not be reached. Default is `NULL`. |
 
 **Value**
 
-An error condition of class `cytetype_api_error`, with the elements `message`, `call` and `error_code`. Printing it shows `CyteType API Error: <message>`.
+An error condition of class `cytetype_api_error`, with the elements `message`, `call`, `error_code` and `status_code`. Printing it shows `CyteType API Error: <message>`.
 
 **Examples**
 
@@ -551,7 +552,8 @@ error <- cytetype_api_error(
     "This report has been deleted by the owner"
   ),
   call = "api",
-  error_code = "REPORT_DELETED"
+  error_code = "REPORT_DELETED",
+  status_code = 410L
 )
 print(error)
 
