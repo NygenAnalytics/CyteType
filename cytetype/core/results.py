@@ -1,10 +1,12 @@
 import json
 import anndata
 import pandas as pd
+from collections.abc import Sequence
 from typing import Any, Callable
 
 from ..config import logger
 from ..api import get_job_status, fetch_job_results
+from ..api.normalization import REVIEWER_CONFIDENCE_LEVELS, renormalize_results
 
 
 def store_job_details(
@@ -12,6 +14,7 @@ def store_job_details(
     job_id: str,
     api_url: str,
     results_prefix: str,
+    visibility: str | None = None,
 ) -> None:
     """Store job details in adata.uns for later retrieval.
 
@@ -20,13 +23,17 @@ def store_job_details(
         job_id: Job ID from API
         api_url: API base URL
         results_prefix: Prefix for storage keys
+        visibility: Requested report visibility; stored only when set
     """
     report_url = f"{api_url}/report/{job_id}"
-    adata.uns[f"{results_prefix}_jobDetails"] = {
+    job_details = {
         "job_id": job_id,
         "report_url": report_url,
         "api_url": api_url,
     }
+    if visibility is not None:
+        job_details["visibility"] = visibility
+    adata.uns[f"{results_prefix}_jobDetails"] = job_details
 
 
 def store_annotations(
@@ -40,9 +47,13 @@ def store_annotations(
 ) -> None:
     """Store API results and update annotations in the AnnData object.
 
+    Adds five categorical obs columns named ``{results_prefix}_<field>_{group_key}``
+    for annotation, cellOntologyTerm, cellOntologyTermID, cellState and
+    reviewerConfidence (High, Moderate, Low, or Unknown when missing).
+
     Args:
         adata: AnnData object to update
-        result_data: Result dictionary from API
+        result_data: Normalized result dictionary from ``fetch_job_results``
         job_id: Job ID
         results_prefix: Prefix for storage keys
         group_key: Column name in adata.obs for grouping
@@ -86,6 +97,16 @@ def store_annotations(
         "",
         field_getter=lambda item: item.get("cellState", ""),
     )
+    _add_annotation_column(
+        adata,
+        result_data,
+        "reviewerConfidence",
+        f"{results_prefix}_reviewerConfidence_{group_key}",
+        clusters,
+        "Unknown",
+        field_getter=_reviewer_confidence_label,
+        categories=[*REVIEWER_CONFIDENCE_LEVELS, "Unknown"],
+    )
 
     # Check for unannotated clusters
     if check_unannotated:
@@ -95,8 +116,9 @@ def store_annotations(
     logger.info(
         f"     Annotation labels → adata.obs['{results_prefix}_annotation_{group_key}']\n"
         f"   Cell Ontology terms → adata.obs['{results_prefix}_cellOntologyTerm_{group_key}']\n"
-        f"Cell Ontology term IDs → adata.obs['{results_prefix}_ontologyTermID_{group_key}']\n"
+        f"Cell Ontology term IDs → adata.obs['{results_prefix}_cellOntologyTermID_{group_key}']\n"
         f"           Cell states → adata.obs['{results_prefix}_cellState_{group_key}']\n"
+        f"   Reviewer confidence → adata.obs['{results_prefix}_reviewerConfidence_{group_key}']\n"
         f"          Full results → adata.uns['{results_prefix}_results']"
     )
 
@@ -107,12 +129,17 @@ def load_local_results(
 ) -> dict[str, Any] | None:
     """Load results from adata.uns if they exist.
 
+    Results that include ``raw_annotations`` are re-normalized (fill-only), so
+    results saved by older versions gain the filled legacy fields and the
+    ``reviewerConfidence``, ``isHeterogeneous`` and ``heterogeneityType`` keys.
+    Obs columns are not added.
+
     Args:
         adata: AnnData object to load results from
         results_prefix: Prefix used when storing results
 
     Returns:
-        Result dictionary if found, None otherwise
+        A new result dictionary if found (``adata.uns`` is not modified), None otherwise
     """
     results_key = f"{results_prefix}_results"
 
@@ -127,14 +154,15 @@ def load_local_results(
     try:
         result = json.loads(stored_results["result"])
         if isinstance(result, dict):
-            return result
+            return renormalize_results(result)
         else:
             logger.warning(f"Expected dict from stored result, got {type(result)}")
     except (json.JSONDecodeError, TypeError):
-        # Fallback to dict format (backwards compatibility)
+        # Fallback to dict format (backwards compatibility). This is the object
+        # held in adata.uns, so renormalize_results builds new dicts.
         result = stored_results["result"]
         if isinstance(result, dict):
-            return result
+            return renormalize_results(result)
         else:
             logger.warning(
                 f"Expected dict from stored result fallback, got {type(result)}"
@@ -252,6 +280,7 @@ def _add_annotation_column(
     clusters: list[str],
     default_value: str,
     field_getter: Callable[[dict[str, Any]], Any] | None = None,
+    categories: Sequence[str] | None = None,
 ) -> None:
     """Add a single annotation column to adata.obs (DRY helper).
 
@@ -263,6 +292,8 @@ def _add_annotation_column(
         clusters: List of cluster assignments
         default_value: Default value for missing annotations
         field_getter: Optional custom function to extract field value
+        categories: Optional category order; only categories that occur are kept.
+            Values must be among them. Defaults to the sorted occurring values.
     """
     if field_getter is None:
 
@@ -274,10 +305,19 @@ def _add_annotation_column(
         for item in result_data.get("annotations", [])
     }
 
-    adata.obs[column_name] = pd.Series(
-        [field_map.get(cluster_id, default_value) for cluster_id in clusters],
-        index=adata.obs.index,
-    ).astype("category")
+    values = [field_map.get(cluster_id, default_value) for cluster_id in clusters]
+    dtype: str | pd.CategoricalDtype = "category"
+    if categories is not None:
+        occurring = set(values)
+        dtype = pd.CategoricalDtype([c for c in categories if c in occurring])
+    adata.obs[column_name] = pd.Series(values, index=adata.obs.index).astype(dtype)
+
+
+def _reviewer_confidence_label(item: dict[str, Any]) -> str:
+    confidence = item.get("reviewerConfidence")
+    if isinstance(confidence, str) and confidence in REVIEWER_CONFIDENCE_LEVELS:
+        return confidence
+    return "Unknown"
 
 
 def _check_unannotated_clusters(
@@ -297,5 +337,5 @@ def _check_unannotated_clusters(
     if unannotated_clusters:
         logger.warning(
             f"No annotations received from API for cluster IDs: {unannotated_clusters}. "
-            f"Corresponding cells marked as 'Unknown Annotation'."
+            f"Corresponding cells marked as 'Unknown'."
         )

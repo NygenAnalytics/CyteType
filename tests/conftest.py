@@ -5,7 +5,13 @@ import anndata
 import numpy as np
 import pandas as pd
 import scanpy as sc
-from typing import Any
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Any
+
+from cytetype.config import logger
+
+if TYPE_CHECKING:
+    from loguru import Message
 
 
 @pytest.fixture
@@ -102,3 +108,17 @@ def mock_api_response() -> dict[str, Any]:
         "clusterCategories": [],
         "studyContext": "Test study",
     }
+
+
+@pytest.fixture
+def log_messages() -> Iterator[list[tuple[str, str]]]:
+    """Capture CyteType log records as (level, message) pairs."""
+    messages: list[tuple[str, str]] = []
+
+    def _sink(message: "Message") -> None:
+        record = message.record
+        messages.append((record["level"].name, record["message"]))
+
+    handler_id = logger.add(_sink, level="INFO")
+    yield messages
+    logger.remove(handler_id)

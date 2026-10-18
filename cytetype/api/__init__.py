@@ -24,9 +24,14 @@ from .exceptions import (
     JobNotFoundError,
     JobFailedError,
     LLMValidationError,
+    ClientDisconnectedError,
     TimeoutError,
     NetworkError,
 )
+
+# The same class under the name that `cytetype` exports, which does not shadow the
+# builtin TimeoutError.
+from .exceptions import TimeoutError as CyteTypeTimeoutError
 
 __all__ = [
     # Client functions
@@ -51,6 +56,10 @@ __all__ = [
     "JobNotFoundError",
     "JobFailedError",
     "LLMValidationError",
+    "ClientDisconnectedError",
+    # `from cytetype.api import *` has always exported TimeoutError, shadowing the
+    # builtin, and code that catches it expects CyteType's class, so it stays.
     "TimeoutError",
+    "CyteTypeTimeoutError",
     "NetworkError",
 ]

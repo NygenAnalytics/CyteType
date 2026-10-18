@@ -10,19 +10,18 @@ dependencies = [
     "natsort~=8.4.0",
     "requests~=2.32.5",
     "pydantic~=2.12.5",
-    "session-info~=1.0.1",
-    "python-dotenv~=1.2.1",
     "duckdb>=1.4.4",
     "hdf5plugin>=6.0.0",
 ]
 authors = [
     {name = "Parashar Dhapola", email = "parashar@nygen.io"}
 ]
-license = {text = "CC BY-NC-SA 4.0"}
+license = "BSD-3-Clause"
 keywords = ["bioinformatics", "single-cell", "RNA-seq", "annotation", "cell types"]
 
 [project.urls]
 Homepage = "https://github.com/NygenAnalytics/cytetype"
+Documentation = "https://docs.nygen.io/CyteType/"
 Issues = "https://github.com/NygenAnalytics/cytetype/issues"
 Repository = "https://github.com/NygenAnalytics/cytetype"
 
@@ -41,13 +40,32 @@ dev = [
     "types-requests~=2.32.4.20260107",
     "pytest-cov>=7.0.0",
 ]
+# Builds the MyST site and the Sphinx API reference (make -C docs html), and
+# executes the documentation notebooks locally (make -C docs execute-docs).
+docs = [
+    "mystmd>=1.11.0",
+    "jupytext>=1.19.6",
+    "nbclient>=0.10",
+    "nbformat>=5.10",
+    "ipykernel>=7.2.0",
+    "myst-parser",
+    "sphinx",
+    "sphinx-autodoc-typehints",
+    "sphinx-book-theme",
+    "sphinx-copybutton",
+    "pyyaml",
+    # The Python quickstart preprocesses its example data with Scanpy and Leiden.
+    "scanpy[leiden]",
+    # Notebook widgets, so tqdm does not warn while executing pages.
+    "ipywidgets",
+]
 
 [build-system]
 requires = ["setuptools>=80.9.0", "setuptools-scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = {find = {}}
+[tool.setuptools.packages.find]
+include = ["cytetype*"]
 
 [tool.setuptools.package-data]
 cytetype = ["templates/*.html"]
@@ -82,4 +100,14 @@ warn_unused_ignores = true
 
 ignore_missing_imports = false
 
-exclude = ["^build/", "^dist/", "^.*\\.egg-info/", "^cytetype/_version\\.py$"]
+# The documentation tooling in docs/ needs the docs dependency group; its tests
+# check it instead.
+exclude = ["^build/", "^dist/", "^.*\\.egg-info/", "^cytetype/_version\\.py$", "^docs/"]
+
+[[tool.mypy.overrides]]
+module = ["docs.*"]
+follow_imports = "skip"
+
+[tool.pytest.ini_options]
+# The documentation tests import the tooling in docs/ from the repository root.
+pythonpath = ["."]

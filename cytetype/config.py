@@ -153,6 +153,9 @@ def _log_format(record: "Record") -> str:
     if record["level"].name == "WARNING":
         return "⚠️  {message}\n"
     if record["level"].name == "SUCCESS":
+        # Respect the NO_COLOR convention (https://no-color.org) for plain-text logs.
+        if os.environ.get("NO_COLOR"):
+            return "✓ {message}\n"
         return "\033[92m✓\033[0m {message}\n"
     return "{message}\n"
 

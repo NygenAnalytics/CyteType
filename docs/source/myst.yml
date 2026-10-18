@@ -1,0 +1,97 @@
+version: 1
+project:
+  title: CyteType
+  description: Annotate the clusters of single-cell RNA-seq data from Python (Scanpy and
+    AnnData) or R (Seurat) with CyteType, and read the evidence for each label.
+  github: https://github.com/NygenAnalytics/CyteType
+  plugins:
+  - type: executable
+    path: ../render_outputs.py
+  exclude:
+  - reference/api/**
+  static_files:
+  - llms.txt
+  - ../build/api
+  toc:
+  - file: index.md
+  - title: Getting started
+    children:
+    - file: getting-started/installation.md
+      title: Installation
+    - file: getting-started/sign-in.md
+      title: Sign in and API keys
+    - file: getting-started/quickstart.ipynb
+      title: Quickstart (Python)
+    - file: getting-started/quickstart-r.md
+      title: Quickstart (R)
+    - file: getting-started/how-cytetype-works.md
+      title: How CyteType works
+  - title: Prepare and run
+    children:
+    - file: guides/prepare-data.md
+      title: Prepare your data
+    - file: guides/large-datasets.md
+      title: Large datasets
+    - file: guides/study-context.md
+      title: Study context and metadata
+    - file: guides/running-jobs.md
+      title: Run, monitor and rerun jobs
+    - file: guides/llm-configuration.md
+      title: Use your own LLM
+    - file: guides/automation.md
+      title: Automation, HPC and CI
+  - title: Results
+    children:
+    - file: results/results-in-your-data.md
+      title: Results in AnnData and Seurat
+    - file: results/report.md
+      title: The CyteType report
+    - file: results/interpreting-results.md
+      title: Interpret and review results
+  - title: Platform
+    children:
+    - file: platform/dashboard.md
+      title: Dashboard
+    - file: platform/sharing.md
+      title: Visibility and sharing
+    - file: platform/chat.md
+      title: Chat
+    - file: platform/target-analysis.md
+      title: Target analysis
+    - file: platform/mcp.md
+      title: Connect AI assistants (MCP)
+    - file: platform/limits.md
+      title: Usage limits and quotas
+  - title: Reference
+    children:
+    - title: Python API
+      url: /api/index.html
+      open_in_same_tab: true
+    - file: reference/r-api.md
+      title: R function reference
+    - file: reference/cli.md
+      title: Command-line reference
+    - file: reference/errors.md
+      title: Errors and error codes
+  - title: Support
+    children:
+    - file: support/troubleshooting.md
+      title: Troubleshooting
+    - file: support/faq.md
+      title: FAQ
+    - file: support/security-and-privacy.md
+      title: Security and privacy
+    - file: support/citing.md
+      title: Cite CyteType and report versions
+    - url: https://github.com/NygenAnalytics/CyteType/issues
+      title: Report a Python issue
+    - url: https://github.com/NygenAnalytics/CyteTypeR/issues
+      title: Report an R issue
+site:
+  template: book-theme
+  parts:
+    primary_sidebar_footer: <!-- No sidebar footer. -->
+  options:
+    folders: true
+    logo_text: CyteType
+    hide_authors: true

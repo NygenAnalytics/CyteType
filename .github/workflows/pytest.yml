@@ -3,8 +3,17 @@ name: CI
 on:
   push:
     branches: [ master ] # Or your default branch
+    # The Docs workflow checks documentation-only changes.
+    paths-ignore:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+      - ".github/workflows/pages.yml"
   pull_request:
     branches: [ master ] # Or your default branch
+    paths-ignore:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+      - ".github/workflows/pages.yml"
 
 jobs:
   test:

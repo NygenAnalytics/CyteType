@@ -1,11 +1,21 @@
+import tempfile
+from collections.abc import Iterable
+from typing import Any
+
+import duckdb
 import pytest
 import h5py
 import anndata
 import numpy as np
+import pandas as pd
 import scipy.sparse as sp
 from pathlib import Path
 
-from cytetype.core.artifacts import save_features_matrix, _is_integer_valued
+from cytetype.core.artifacts import (
+    save_features_matrix,
+    save_obs_duckdb,
+    _is_integer_valued,
+)
 
 
 def test_save_features_matrix_writes_var_metadata(
@@ -187,9 +197,17 @@ def test_save_features_matrix_backed_csr(tmp_path: Path) -> None:
 def test_save_features_matrix_backed_csr_multiple_groups(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import cytetype.config
+    # artifacts.py binds WRITE_MEM_BUDGET at import, so patch it there.
+    monkeypatch.setattr("cytetype.core.artifacts.WRITE_MEM_BUDGET", 256)
+    progress_labels: list[str] = []
 
-    monkeypatch.setattr(cytetype.config, "WRITE_MEM_BUDGET", 256)
+    def _recording_tqdm(iterable: Iterable[int], desc: str = "", **kwargs: Any) -> Any:
+        progress_labels.append(desc)
+        return iterable
+
+    monkeypatch.setattr(
+        "cytetype.core.artifacts._try_import_tqdm", lambda: _recording_tqdm
+    )
 
     n_obs, n_vars = 50, 30
     rng = np.random.default_rng(7)
@@ -206,6 +224,9 @@ def test_save_features_matrix_backed_csr_multiple_groups(
     out_path = tmp_path / "vars.h5"
     save_features_matrix(out_file=str(out_path), mat=backed.X)
     backed.file.close()
+
+    # The column-group scatter ran in several groups, not one.
+    assert "Writing normalized counts (group 2)" in progress_labels
 
     with h5py.File(out_path, "r") as f:
         grp = f["vars"]
@@ -231,3 +252,169 @@ def test_is_integer_valued_with_float_integers() -> None:
 def test_is_integer_valued_with_floats() -> None:
     mat = sp.csr_matrix(np.array([[1.5, 0.0, 3.2], [0.0, 2.7, 0.0]], dtype=np.float32))
     assert _is_integer_valued(mat) is False
+
+
+def test_save_features_matrix_hints_backed_mode_only_for_large_in_memory_data(
+    tmp_path: Path,
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+    log_messages: list[tuple[str, str]],
+) -> None:
+    def _backed_mode_hints() -> list[str]:
+        return [message for _, message in log_messages if "backed mode" in message]
+
+    save_features_matrix(
+        out_file=str(tmp_path / "small.h5"), mat=mock_adata.X, col_batch=10
+    )
+    assert _backed_mode_hints() == []
+
+    monkeypatch.setattr(
+        "cytetype.core.artifacts.BACKED_MODE_HINT_MIN_CELLS", mock_adata.n_obs
+    )
+    save_features_matrix(
+        out_file=str(tmp_path / "large.h5"), mat=mock_adata.X, col_batch=10
+    )
+    assert len(_backed_mode_hints()) == 1
+
+
+def test_save_features_matrix_warns_with_cause_when_raw_group_fails(
+    tmp_path: Path,
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+    log_messages: list[tuple[str, str]],
+) -> None:
+    def _fail(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("raw counts exploded")
+
+    monkeypatch.setattr("cytetype.core.artifacts._write_raw_group", _fail)
+    out_path = tmp_path / "vars.h5"
+
+    save_features_matrix(
+        out_file=str(out_path),
+        mat=mock_adata.X,
+        raw_mat=mock_adata.X,
+        col_batch=10,
+    )
+
+    assert (
+        "WARNING",
+        f"Failed to write raw counts group to {out_path}, skipping: raw counts exploded",
+    ) in log_messages
+    with h5py.File(out_path, "r") as f:
+        assert "raw" not in f
+
+
+def _obs_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {"cluster": pd.Categorical(["a", "b", "a"]), "n_genes": [10, 20, 30]},
+        index=["c1", "c2", "c3"],
+    )
+
+
+def test_save_obs_duckdb_spills_to_a_private_temporary_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    system_tmp = tmp_path / "system-tmp"
+    system_tmp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(system_tmp))
+    spill_dirs: list[Path] = []
+    connect = duckdb.connect
+
+    def _connect(database: str, *args: Any, **kwargs: Any) -> Any:
+        spill_dir = Path(kwargs["config"]["temp_directory"])
+        assert spill_dir.is_dir()
+        spill_dirs.append(spill_dir)
+        return connect(database, *args, **kwargs)
+
+    monkeypatch.setattr("cytetype.core.artifacts.duckdb.connect", _connect)
+    out_path = tmp_path / "obs.duckdb"
+
+    save_obs_duckdb(str(out_path), _obs_frame())
+
+    assert len(spill_dirs) == 1
+    assert spill_dirs[0].parent == system_tmp
+    assert spill_dirs[0].name.startswith("cytetype-duckdb-")
+    # Removed after writing.
+    assert list(system_tmp.iterdir()) == []
+    with connect(str(out_path), read_only=True) as con:
+        assert con.execute("SELECT count(*) FROM obs").fetchone() == (3,)
+
+
+def test_save_obs_duckdb_uses_and_keeps_an_explicit_temp_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spill_dir = tmp_path / "spill"
+    seen: list[str] = []
+    connect = duckdb.connect
+
+    def _connect(database: str, *args: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs["config"]["temp_directory"])
+        return connect(database, *args, **kwargs)
+
+    monkeypatch.setattr("cytetype.core.artifacts.duckdb.connect", _connect)
+
+    save_obs_duckdb(
+        str(tmp_path / "obs.duckdb"), _obs_frame(), temp_directory=str(spill_dir)
+    )
+
+    assert seen == [str(spill_dir)]
+
+
+def test_save_obs_duckdb_falls_back_when_temp_directory_cannot_be_created(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    log_messages: list[tuple[str, str]],
+) -> None:
+    def _no_temp_directory(*args: Any, **kwargs: Any) -> Any:
+        raise OSError(28, "No space left on device")
+
+    configs: list[dict[str, Any]] = []
+    connect = duckdb.connect
+
+    def _connect(database: str, *args: Any, **kwargs: Any) -> Any:
+        configs.append(dict(kwargs["config"]))
+        return connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(tempfile, "TemporaryDirectory", _no_temp_directory)
+    monkeypatch.setattr("cytetype.core.artifacts.duckdb.connect", _connect)
+    obs_df = _obs_frame()
+    out_path = tmp_path / "obs.duckdb"
+
+    save_obs_duckdb(
+        str(out_path),
+        obs_df,
+        obsm_coordinates=np.arange(6, dtype=float).reshape(3, 2),
+        coordinates_key="X_umap",
+    )
+
+    # DuckDB's default spill location is used, and obs_df is left as it was.
+    assert "temp_directory" not in configs[0]
+    assert list(obs_df.columns) == ["cluster", "n_genes"]
+    assert any(
+        level == "WARNING" and "No space left on device" in message
+        for level, message in log_messages
+    )
+    with connect(str(out_path), read_only=True) as con:
+        assert con.execute(
+            'SELECT "__vis_coordinates_X_umap_2" FROM obs'
+        ).fetchall() == [(1.0,), (3.0,), (5.0,)]
+
+
+def test_save_obs_duckdb_removes_added_columns_when_writing_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _connect(*args: Any, **kwargs: Any) -> Any:
+        raise duckdb.IOException("disk full")
+
+    monkeypatch.setattr("cytetype.core.artifacts.duckdb.connect", _connect)
+    obs_df = _obs_frame()
+
+    with pytest.raises(duckdb.IOException):
+        save_obs_duckdb(
+            str(tmp_path / "obs.duckdb"),
+            obs_df,
+            obsm_coordinates=np.zeros((3, 2)),
+            coordinates_key="X_umap",
+        )
+
+    assert list(obs_df.columns) == ["cluster", "n_genes"]
