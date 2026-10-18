@@ -1,7 +1,7 @@
 import sys
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, get_args
 
 import anndata
 import numpy as np
@@ -14,7 +14,8 @@ from .api.client import (
 from .api.client import (
     upload_vars_h5 as upload_vars_h5_file,
 )
-from .api.exceptions import AuthenticationError
+from .api.exceptions import AuthenticationError, AuthorizationError
+from .api.schemas import JobVisibility
 from .config import get_default_api_url, load_credentials, logger, validate_api_url
 from .core.artifacts import (
     _is_integer_valued,
@@ -53,6 +54,23 @@ def _get_cytetype_version() -> str | None:
         return None
 
 
+def _unreadable_credentials_message(error: Exception) -> str:
+    return (
+        f"Saved CyteType credentials could not be read ({error}). Pass `auth_token`, "
+        "or make sure XDG_CONFIG_HOME or HOME points to a readable configuration "
+        "directory."
+    )
+
+
+def _remove_partial_artifact(*paths: str) -> None:
+    """Delete files left behind by a failed artifact build."""
+    for path in paths:
+        try:
+            Path(path).unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning(f"Failed to delete partial artifact {path}: {exc}")
+
+
 class CyteType:
     """CyteType class for characterizing clusters from single-cell RNA-seq data.
 
@@ -60,6 +78,12 @@ class CyteType:
     The expensive data preparation steps (validation, expression percentage calculation, and marker
     gene extraction) are performed during initialization, allowing for efficient reuse when making
     multiple requests with different parameters.
+
+    Initialization also writes the `vars.h5` and `obs.duckdb` artifact files and adds a temporary
+    `__cytetype_gene_symbols` column (with a numeric suffix if that name is taken) to `adata.var`
+    holding the cleaned gene symbols. Call `cleanup()` after `run()` to delete the files and remove
+    the column; a file whose build failed is deleted right away. After `cleanup()`, create a new
+    `CyteType` object to run another job with artifacts.
     """
 
     # Type annotations for instance attributes
@@ -121,29 +145,42 @@ class CyteType:
                 cluster context. Defaults to 10.
             pcent_batch_size (int, optional): Number of cells to process per chunk when
                 calculating expression percentages. Defaults to 5000.
-            coordinates_key (str, optional): Key in adata.obsm containing 2D coordinates for
-                visualization. Must be a 2D array with same number of elements as clusters.
-                Defaults to "X_umap".
+            coordinates_key (str, optional): Key in `adata.obsm` with 2D coordinates for the
+                report's visualization. This key is tried first, then "X_umap", "X_tsne" and
+                "X_pca", all matched case-insensitively; the first array with `adata.n_obs`
+                rows and at least 2 columns is used (only its first 2 columns). If none
+                qualifies, visualization is disabled. Defaults to "X_umap".
             max_cells_per_group (int, optional): Maximum number of cells to sample per group
                 for visualization. If a group has more cells than this limit, a random sample
                 will be taken. Defaults to 1000.
+            vars_h5_path (str, optional): Path where the expression artifact (normalized and,
+                when available, raw counts) is written during initialization and uploaded by
+                `run()`. A relative path is written to the current working directory.
+                `cleanup()` deletes the file. Defaults to "vars.h5".
+            obs_duckdb_path (str, optional): Path where the cell metadata artifact (`adata.obs`
+                and the visualization coordinates) is written during initialization and
+                uploaded by `run()`. A relative path is written to the current working
+                directory. `cleanup()` deletes the file. Defaults to "obs.duckdb".
             max_metadata_categories (int, optional): Maximum number of unique values a categorical
                 obs column may have to be included in cluster metadata aggregation. Columns with
                 more unique values (e.g. cell barcodes, per-cell IDs) are skipped to avoid
                 excessive memory usage. Defaults to 500.
             api_url (str | None, optional): URL for the CyteType API endpoint. Defaults to
                 `CYTETYPE_API_URL` when set, otherwise "https://cytetype.nygen.io".
-            auth_token (str | None, optional): Bearer token for API authentication. If provided,
-                will be included in the Authorization header as "Bearer {auth_token}". Defaults to None.
+            auth_token (str | None, optional): API key sent as a Bearer token. When None, the key
+                saved by `cytetype setup` (or `cytetype login`) for `api_url` is read each time it
+                is needed, and initialization logs a note if there is none. Defaults to None.
             label_na (bool, optional): If True, cells with NaN values in the
                 ``group_key`` column are assigned an ``'Unknown'`` cluster label
-                (or ``'Unknown 2'``, etc. if that label already exists). The original
-                AnnData object is not modified. If False (default), a ``ValueError``
+                (or ``'Unknown 2'``, etc. if that label already exists) in a new
+                AnnData object, which ``run()`` returns; the labels in the original
+                object's ``obs`` are not changed. If False (default), a ``ValueError``
                 is raised instead.
 
         Raises:
             KeyError: If the required keys are missing in `adata.obs` or `adata.uns`
-            ValueError: If the data format is incorrect or there are validation errors
+            ValueError: If the data format is incorrect, there are validation errors, or
+                `api_url` is not a valid server origin
         """
         self.adata = adata
         self.group_key = group_key
@@ -162,6 +199,11 @@ class CyteType:
         self._obs_duckdb_path: str | None = None
         self._original_gene_symbols_column: str | None = None
         self._temporary_gene_symbols_column: str | None = None
+        self._artifacts_cleaned_up = False
+
+        # Report a missing sign-in before the slow preparation, not only at run().
+        if not auth_token:
+            self._check_saved_credentials()
 
         try:
             self.gene_symbols_column = resolve_gene_symbols_column(
@@ -188,7 +230,7 @@ class CyteType:
                     )
                     na_label = _generate_unique_na_label(existing_labels)
                     logger.warning(
-                        f"⚠️  Relabeling {n_nan} cells ({pct}%) with NaN values "
+                        f"Relabeling {n_nan} cells ({pct}%) with NaN values "
                         f"in '{group_key}' as '{na_label}'."
                     )
                     adata = anndata.AnnData(
@@ -312,6 +354,7 @@ class CyteType:
             except Exception as exc:
                 logger.warning(f"vars.h5 artifact failed during build: {exc}")
                 self._artifact_build_errors.append(("vars_h5", exc))
+                _remove_partial_artifact(vars_h5_path)
 
             # Build obs.duckdb
             try:
@@ -332,6 +375,7 @@ class CyteType:
             except Exception as exc:
                 logger.warning(f"obs.duckdb artifact failed during build: {exc}")
                 self._artifact_build_errors.append(("obs_duckdb", exc))
+                _remove_partial_artifact(obs_duckdb_path, f"{obs_duckdb_path}.wal")
 
             logger.info("Data preparation completed. Ready for submitting jobs.")
         except Exception:
@@ -377,6 +421,7 @@ class CyteType:
 
     def _upload_artifacts(
         self,
+        auth_token: str,
         upload_timeout_seconds: int,
         upload_max_workers: int = 4,
     ) -> tuple[dict[str, str], list[tuple[str, Exception]]]:
@@ -395,7 +440,7 @@ class CyteType:
                 logger.info("Uploading vars.h5 artifact...")
                 vars_upload = upload_vars_h5_file(
                     self.api_url,
-                    self.auth_token,
+                    auth_token,
                     self._vars_h5_path,
                     timeout=timeout,
                     max_workers=upload_max_workers,
@@ -417,7 +462,7 @@ class CyteType:
                 logger.info("Uploading obs.duckdb artifact...")
                 obs_upload = upload_obs_duckdb_file(
                     self.api_url,
-                    self.auth_token,
+                    auth_token,
                     self._obs_duckdb_path,
                     timeout=timeout,
                     max_workers=upload_max_workers,
@@ -438,7 +483,9 @@ class CyteType:
 
         Call this after run() completes to remove the vars.h5 and obs.duckdb
         files from disk and drop the temporary canonical gene-symbol column.
-        Paths are cleared so repeated calls are safe.
+        Paths are cleared so repeated calls are safe. A later `run()` raises
+        unless `require_artifacts=False`; create a new `CyteType` object to
+        rebuild the artifacts.
         """
         for attr, path in [
             ("_vars_h5_path", self._vars_h5_path),
@@ -451,14 +498,48 @@ class CyteType:
                 except OSError as exc:
                     logger.warning(f"Failed to delete artifact {path}: {exc}")
                 setattr(self, attr, None)
+                self._artifacts_cleaned_up = True
 
         self._cleanup_temporary_gene_symbols_column()
+
+    def _check_saved_credentials(self) -> None:
+        """Report early when run() will not find a saved API key for ``self.api_url``.
+
+        Only checks: it never raises and does not keep the token, which
+        ``_resolve_auth_token`` reads when it is needed.
+        """
+        try:
+            credentials = load_credentials(self.api_url)
+        except ValueError as error:
+            logger.warning(
+                f"{error}. Unless you pass auth_token to run(), run `cytetype logout`, "
+                "then `cytetype setup`, before calling run()."
+            )
+            return
+        except (OSError, RuntimeError) as error:
+            # For example an unreadable file, or no home directory in a container.
+            logger.warning(_unreadable_credentials_message(error))
+            return
+
+        if credentials is None:
+            # Not a problem when auth_token is passed to run(), as in CI.
+            logger.info(
+                f"No saved CyteType sign-in found for {self.api_url}. Unless you pass "
+                "auth_token to run(), run `cytetype setup` (or `cytetype login`) "
+                "before calling run()."
+            )
 
     def _resolve_auth_token(
         self,
         api_url: str,
         auth_token: str | None = None,
     ) -> str:
+        """Return the API key to send to ``api_url``.
+
+        A token given to ``__init__`` or ``run()`` is kept for its API URL. Saved
+        credentials are read on every call and never stored on the instance, so a
+        key replaced with ``cytetype setup --force`` is used right away.
+        """
         normalized_api_url = validate_api_url(api_url)
         if auth_token:
             self.auth_token = auth_token
@@ -468,13 +549,16 @@ class CyteType:
         if self.auth_token and self._auth_token_api_url == normalized_api_url:
             return self.auth_token
 
-        self.auth_token = None
-        self._auth_token_api_url = None
         try:
             credentials = load_credentials(normalized_api_url)
         except ValueError as error:
             raise AuthenticationError(
                 f"{error}. Run `cytetype logout`, then `cytetype setup`.",
+                error_code="AUTHENTICATION_REQUIRED",
+            ) from error
+        except (OSError, RuntimeError) as error:
+            raise AuthenticationError(
+                _unreadable_credentials_message(error),
                 error_code="AUTHENTICATION_REQUIRED",
             ) from error
 
@@ -483,9 +567,6 @@ class CyteType:
                 "CyteType sign-in is required. Run `cytetype setup` first.",
                 error_code="AUTHENTICATION_REQUIRED",
             )
-
-        self.auth_token = credentials.apiToken
-        self._auth_token_api_url = normalized_api_url
         return credentials.apiToken
 
     def run(
@@ -506,25 +587,26 @@ class CyteType:
         require_artifacts: bool = True,
         show_progress: bool = True,
         override_existing_results: bool = False,
+        visibility: Literal["private", "org", "public"] | None = None,
     ) -> anndata.AnnData:
         """Perform cluster characterization using the CyteType API.
 
         Args:
-            study_context (str, optional): Biological context for the experimental setup.
+            study_context (str): Biological context for the experimental setup. Required.
                 For example, include information about 'organisms', 'tissues', 'diseases', 'developmental_stages',
-                'single_cell_methods', 'experimental_conditions'. Defaults to None.
+                'single_cell_methods', 'experimental_conditions'.
             llm_configs (list[dict[str, Any]] | None, optional): Configuration for the large language
                 models to be used. Each dict must match the LLMModelConfig schema with required 'provider' and 'name' fields.
                 Either 'apiKey' or all AWS credentials ('awsAccessKeyId', 'awsSecretAccessKey', 'awsDefaultRegion') must be provided.
                 Defaults to None, using the API's default model.
             metadata (dict[str, Any] | None, optional): Custom metadata tags to include in the report header.
-                Values that look like URLs will be made clickable in the report.
-                Defaults to None.
-            n_parallel_clusters (int, optional): Number of parallel requests to make to the model. Maximum is 50. Note than high values can lead to rate limit errors.
-                Defaults to 2.
-            results_prefix (str, optional): Prefix for keys added to `adata.obs` and `adata.uns` to
-                store results. The final annotation column will be
-                `adata.obs[f"{results_key}_{group_key}"]`. Defaults to "cytetype".
+                Values must be strings; values that look like URLs will be made clickable in the report.
+                A "title" key (case-insensitive) also names the job in the dashboard. Defaults to None.
+            n_parallel_clusters (int, optional): Number of parallel requests to make to the model (1-50).
+                Note that high values can lead to rate limit errors. Ignored when `llm_configs` is not
+                provided; the server then uses its own setting. Defaults to 2.
+            results_prefix (str, optional): Prefix for the keys added to `adata.obs` and `adata.uns`
+                to store results (see Returns). Defaults to "cytetype".
             poll_interval_seconds (int, optional): How often (in seconds) to check for results from
                 the API. Defaults to 10.
             timeout_seconds (int, optional): Maximum time (in seconds) to wait for API results before
@@ -532,35 +614,77 @@ class CyteType:
             api_url (str, optional): URL for the CyteType API endpoint. If not provided, the API URL
                 specified in the initialization will be used. If provided, it will override the API URL
                 specified in the initialization.
-            auth_token (str | None, optional): Bearer token for API authentication. If not provided, the auth token
-                specified in the initialization will be used. If provided, it will override the auth token
-                specified in the initialization.
+            auth_token (str | None, optional): API key sent as a Bearer token. If provided, it overrides
+                the token specified in the initialization and is kept for later calls to the same API
+                URL. If neither is provided, the key saved by `cytetype setup` (or `cytetype login`)
+                for the API URL is read at each call. Defaults to None.
             save_query (bool, optional): Whether to save the query to a file. Defaults to True.
             query_filename (str, optional): Filename for saving the query when save_query is True.
                 Defaults to "query.json".
             upload_timeout_seconds (int, optional): Socket read timeout used for each artifact upload.
                 Defaults to 3600.
             upload_max_workers (int, optional): Number of parallel threads used to upload file
-                chunks. Each worker holds one chunk in memory (~100 MB). Defaults to 4.
+                chunks. Each worker holds one chunk in memory; the chunk size is set by the server.
+                Defaults to 4.
             require_artifacts (bool, optional): Whether to raise an error if artifact building or
-                uploading fails. When True (default), any artifact failure stops the run. Set to
-                False to skip artifacts and continue with annotation only. Defaults to True.
+                uploading fails, or if `cleanup()` already deleted the artifacts. When True (default),
+                any artifact failure stops the run. Set to False to skip artifacts and continue with
+                annotation only. Authentication and authorization errors always stop the run.
+                Defaults to True.
             show_progress (bool, optional): Whether to display progress updates with spinner and
                 cluster status. Set to False to disable all visual progress output. Defaults to True.
             override_existing_results (bool, optional): Whether to override existing results with the
                 same results_prefix. If False (default) and results already exist, will raise an error
                 to prevent accidental overwriting. Set to True to explicitly allow overwriting.
                 Defaults to False.
+            visibility (Literal["private", "org", "public"] | None, optional): Who can view the
+                report. Defaults to None, which uses the server default ("private"). "org" shares
+                the report with your organization and must be submitted with an organization API
+                key; with a personal key, the server rejects the job after the artifacts are
+                uploaded. "public" makes the report viewable by anyone with the link, and any
+                signed-in CyteType user can find it in Chat's report search.
 
         Returns:
-            anndata.AnnData: The input AnnData object, modified in place with the following additions:
-                - `adata.obs[f"{results_prefix}_{group_key}"]`: Cell type annotations as categorical values
-                - `adata.uns[f"{results_prefix}_results"]`: Complete API response data and job tracking info
+            anndata.AnnData: The AnnData object the results were added to. This is the object passed
+            to `CyteType()`, except when `label_na=True` relabeled NaN cluster labels: then it is
+            a new object and the obs columns exist only there, so use the returned object. It
+            gets the following additions:
+
+            - `adata.obs[f"{results_prefix}_annotation_{group_key}"]`: Cell type annotations
+            - `adata.obs[f"{results_prefix}_cellOntologyTerm_{group_key}"]`: Cell Ontology term names
+            - `adata.obs[f"{results_prefix}_cellOntologyTermID_{group_key}"]`: Cell Ontology term IDs
+            - `adata.obs[f"{results_prefix}_cellState_{group_key}"]`: Cell states
+            - `adata.obs[f"{results_prefix}_reviewerConfidence_{group_key}"]`: Reviewer confidence
+              ("High", "Moderate" or "Low"; "Unknown" when missing)
+            - `adata.uns[f"{results_prefix}_results"]`: The job ID and the normalized results
+              (see `get_results()`) as a JSON string under "result"
+            - `adata.uns[f"{results_prefix}_jobDetails"]`: The job ID, report URL and API URL,
+              plus the requested visibility when given
+
+            The obs columns are categorical. Cells in clusters without a result get "Unknown"
+            ("" for the cell state).
 
         Raises:
-            ValueError: If results with the same prefix already exist and override_existing_results is False
-            CyteTypeAPIError: If the API request fails or returns invalid data
-            CyteTypeTimeoutError: If the API does not return results within the specified timeout period
+            ValueError: If results with the same prefix already exist and override_existing_results
+                is False, if `api_url` is not a valid server origin, if `visibility` is not a valid
+                value, if `upload_timeout_seconds` is not positive, or if `cleanup()` deleted the
+                artifacts and `require_artifacts` is True.
+            AuthenticationError: If no API key is available (including saved credentials that cannot
+                be read) or the server rejects it.
+            pydantic.ValidationError: If `llm_configs`, `metadata`, `n_parallel_clusters` or the
+                prepared input data are invalid.
+            RateLimitError: If the server's rate limit for job submissions is exceeded.
+            QuotaExceededError: If the account's quota is exceeded.
+            AuthorizationError: If the account may not submit jobs or upload files (for example, an
+                expired license).
+            LLMValidationError: If a model in `llm_configs` fails the server's validation.
+            APIError: For other errors returned by the server.
+            NetworkError: If the server cannot be reached or returns an unexpected response.
+            cytetype.api.exceptions.TimeoutError: If a request times out or the job does not complete
+                within `timeout_seconds` (also importable as `cytetype.CyteTypeTimeoutError`).
+            JobFailedError: If the job fails on the server.
+            Exception: With require_artifacts=True, the original exception raised while building or
+                uploading an artifact.
 
         """
         # Check for existing results
@@ -575,9 +699,26 @@ class CyteType:
                 f"  3. Use annotator.get_results(results_prefix='{results_prefix}') to retrieve existing results"
             )
 
+        if visibility is not None and visibility not in get_args(JobVisibility):
+            raise ValueError(
+                "visibility must be 'private', 'org', 'public' or None, "
+                f"got {visibility!r}"
+            )
+
+        if self._artifacts_cleaned_up:
+            if require_artifacts:
+                raise ValueError(
+                    "The artifact files were deleted by cleanup(). Create a new "
+                    "CyteType object to rebuild them, or pass require_artifacts=False "
+                    "to run without them."
+                )
+            logger.warning(
+                "The artifact files were deleted by cleanup(). Continuing without them."
+            )
+
         if api_url is not None:
             self.api_url = validate_api_url(api_url)
-        self._resolve_auth_token(self.api_url, auth_token)
+        token = self._resolve_auth_token(self.api_url, auth_token)
         if upload_timeout_seconds <= 0:
             raise ValueError("upload_timeout_seconds must be greater than 0")
 
@@ -592,9 +733,11 @@ class CyteType:
             self.expression_percentages,
             n_parallel_clusters,
             llm_configs,
+            visibility=visibility,
         )
 
         uploaded_file_refs, artifact_errors = self._upload_artifacts(
+            token,
             upload_timeout_seconds=upload_timeout_seconds,
             upload_max_workers=upload_max_workers,
         )
@@ -602,6 +745,23 @@ class CyteType:
             payload["uploaded_files"] = uploaded_file_refs
 
         if artifact_errors:
+            # Credential problems are not artifact bugs, and the job submission would
+            # fail the same way, so raise them with the fix instead of the issue link.
+            for _, error in artifact_errors:
+                if isinstance(error, AuthenticationError):
+                    raise AuthenticationError(
+                        f"Artifact upload was rejected: {error.message.rstrip('.')}. "
+                        "Run `cytetype setup --force` to sign in again (or `cytetype "
+                        "login` to save a new key), or pass a valid `auth_token`.",
+                        error_code=error.error_code,
+                    ) from error
+                if isinstance(error, AuthorizationError):
+                    raise AuthorizationError(
+                        f"Artifact upload was not authorized: {error.message.rstrip('.')}. "
+                        f"Check your account and license at {self.api_url}/dashboard.",
+                        error_code=error.error_code,
+                    ) from error
+
             failed_names = ", ".join(name for name, _ in artifact_errors)
             if require_artifacts:
                 logger.error(
@@ -624,13 +784,15 @@ class CyteType:
 
         # Submit job and store details
         print()
-        job_id = submit_annotation_job(self.api_url, self.auth_token, payload)
-        store_job_details(self.adata, job_id, self.api_url, results_prefix)
+        job_id = submit_annotation_job(self.api_url, token, payload)
+        store_job_details(
+            self.adata, job_id, self.api_url, results_prefix, visibility=visibility
+        )
 
         # Wait for completion
         result = wait_for_completion(
             self.api_url,
-            self.auth_token,
+            token,
             job_id,
             poll_interval_seconds,
             timeout_seconds,
@@ -657,16 +819,35 @@ class CyteType:
         self,
         results_prefix: str = "cytetype",
     ) -> dict[str, Any] | None:
-        """Retrieve the CyteType results from the AnnData object.
+        """Retrieve the CyteType results for this AnnData object.
 
-        If results are not available locally but job details exist, attempts to retrieve
-        results from the API with a single request (no polling).
+        Results stored in `adata.uns[f"{results_prefix}_results"]` are returned first. They are
+        re-normalized, so results saved by older versions also get the filled fields and the
+        `reviewerConfidence`, `isHeterogeneous` and `heterogeneityType` keys (obs columns are not
+        added in this case). Otherwise, if `adata.uns[f"{results_prefix}_jobDetails"]` holds a job
+        ID, the API is asked for the job status and, if the job has completed, for its results
+        (up to two requests, no polling). Fetched results are written the same way as by `run()`,
+        to the AnnData object that `run()` returns (`self.adata`; a new object if `label_na=True`
+        relabeled NaN cluster labels).
 
         Args:
             results_prefix: The prefix used when storing results. Defaults to "cytetype".
 
         Returns:
-            dict[str, Any] | None: The original result dictionary from the API, or None if not found.
+            dict[str, Any] | None: The normalized results with "annotations", "summary",
+            "clusterCategories", "studyContext" and "raw_annotations" (the API's per-cluster
+            results, unchanged). Each annotation has "clusterId", "annotation", "ontologyTerm",
+            "ontologyTermID", "granularAnnotation", "cellState", "justification",
+            "supportingMarkers", "conflictingMarkers", "missingExpression",
+            "unexpectedExpression", "reviewerConfidence" ("High", "Moderate", "Low" or None),
+            "isHeterogeneous" (bool or None) and "heterogeneityType" (str or None). None if no
+            results are stored and they could not be fetched (no job details, job not
+            completed, or the request failed).
+
+        Raises:
+            ValueError: If the API URL stored in the job details is not a valid server origin.
+            AuthenticationError: If results must be fetched and no API key is available for the
+                job's API URL (including saved credentials that cannot be read).
         """
         logger.info(f"Retrieving results with prefix: '{results_prefix}'")
 

@@ -15,7 +15,7 @@ class APIError(CyteTypeError):
 
 # API exceptions coupled to specific error codes
 class AuthenticationError(APIError):
-    """Authentication failed - INVALID_TOKEN, TOKEN_INACTIVE."""
+    """Authentication failed - INVALID_TOKEN, TOKEN_INACTIVE, AUTHENTICATION_REQUIRED."""
 
     pass
 
@@ -85,6 +85,7 @@ class NetworkError(CyteTypeError):
 ERROR_CODE_TO_EXCEPTION = {
     "INVALID_TOKEN": AuthenticationError,
     "TOKEN_INACTIVE": AuthenticationError,
+    "AUTHENTICATION_REQUIRED": AuthenticationError,
     "ACCESS_DENIED": AuthorizationError,
     "LICENSE_EXPIRED": AuthorizationError,
     "VPN_BLOCKED": AuthorizationError,

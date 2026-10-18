@@ -1,18 +1,45 @@
 """Integration tests for CyteType class."""
 
+import copy
+import inspect
+import json
+import tempfile
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import anndata
+import duckdb
+import numpy as np
 import pytest
 import scanpy as sc
 from pydantic import ValidationError
 
+import cytetype.main
 from cytetype import CyteType
 from cytetype.api import UploadResponse
-from cytetype.api.exceptions import AuthenticationError, RateLimitError
-from cytetype.config import StoredCredentials
+from cytetype.api.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
+    RateLimitError,
+)
+from cytetype.config import StoredCredentials, load_credentials, save_credentials
+from cytetype.core.artifacts import save_obs_duckdb
+
+# Results stored without raw_annotations get the SDK-only keys as None.
+NO_REVIEW_FIELDS = dict.fromkeys(
+    ("reviewerConfidence", "isHeterogeneous", "heterogeneityType")
+)
+
+
+def _saved_credentials(api_token: str) -> StoredCredentials:
+    return StoredCredentials(
+        apiUrl="https://cytetype.nygen.io",
+        apiToken=api_token,
+        tokenId=f"{api_token}-id",
+        userId="user-id",
+        email="researcher@university.edu",
+    )
 
 
 def test_fixture_works(mock_adata: anndata.AnnData) -> None:
@@ -442,7 +469,10 @@ def test_cytetype_get_results_local(
     results = ct.get_results()
 
     assert results is not None
-    assert results["annotations"] == mock_api_response["annotations"]
+    assert results["annotations"] == [
+        {**annotation, **NO_REVIEW_FIELDS}
+        for annotation in mock_api_response["annotations"]
+    ]
     assert len(results["annotations"]) == 3
 
 
@@ -489,8 +519,9 @@ def test_cytetype_get_results_remote(
     fetch_args = mock_fetch.call_args.args
     assert fetch_args[2] == "https://api.test"
     assert fetch_args[3] == "target_test_token"
-    assert ct.auth_token == "target_test_token"
-    assert ct._auth_token_api_url == "https://api.test"
+    # The saved key is not kept; the token given to CyteType stays bound to its URL.
+    assert ct.auth_token == "trusted_test_token"
+    assert ct._auth_token_api_url == "https://trusted.test"
 
 
 @patch("cytetype.main.fetch_remote_results")
@@ -676,6 +707,9 @@ def test_cytetype_run_rejects_unsafe_api_url_before_network(
     monkeypatch.setattr("cytetype.main.submit_annotation_job", submit)
     monkeypatch.setattr("cytetype.main.wait_for_completion", wait)
     ct = CyteType(mock_adata, group_key="leiden")
+    # __init__ only checks for saved credentials to warn early.
+    credential_loader.assert_called_once_with("https://cytetype.nygen.io")
+    credential_loader.reset_mock()
 
     with pytest.raises(ValueError, match="server origin"):
         ct.run(
@@ -756,7 +790,8 @@ def test_cytetype_run_uses_stored_credentials(
 
     ct.run(study_context="Test")
 
-    assert ct.auth_token == "stored_test_token"
+    # Saved credentials are read for each call and not kept on the instance.
+    assert ct.auth_token is None
     assert mock_submit.call_args.args[1] == "stored_test_token"
     assert mock_wait.call_args.args[1] == "stored_test_token"
 
@@ -908,6 +943,7 @@ def test_cytetype_get_results_backwards_compat_dict_format(
 ) -> None:
     """Test get_results() handles old dict format (backwards compat)."""
     ct = CyteType(mock_adata, group_key="leiden")
+    before = copy.deepcopy(mock_api_response)
 
     # Store results in old format (dict, not JSON string)
     ct.adata.uns["cytetype_results"] = {
@@ -919,7 +955,13 @@ def test_cytetype_get_results_backwards_compat_dict_format(
     results = ct.get_results()
 
     assert results is not None
-    assert results == mock_api_response
+    assert results == {
+        **before,
+        "annotations": [
+            {**annotation, **NO_REVIEW_FIELDS} for annotation in before["annotations"]
+        ],
+    }
+    assert ct.adata.uns["cytetype_results"]["result"] == before
 
 
 def test_cytetype_get_results_malformed_json(mock_adata: anndata.AnnData) -> None:
@@ -958,3 +1000,553 @@ def test_cytetype_get_results_job_status_failed(
     results = ct.get_results()
 
     assert results is None
+
+
+@pytest.mark.parametrize("require_artifacts", [True, False])
+def test_cytetype_run_raises_upload_authentication_errors_with_setup_hint(
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+    log_messages: list[tuple[str, str]],
+    require_artifacts: bool,
+) -> None:
+    upload_error = AuthenticationError(
+        "API token is invalid or not found. Re-authenticate with valid token.",
+        error_code="INVALID_TOKEN",
+    )
+    submit = MagicMock()
+    monkeypatch.setattr(
+        "cytetype.main.upload_vars_h5_file", MagicMock(side_effect=upload_error)
+    )
+    monkeypatch.setattr("cytetype.main.submit_annotation_job", submit)
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    with pytest.raises(
+        AuthenticationError, match="cytetype setup --force"
+    ) as error_info:
+        ct.run(study_context="Test", require_artifacts=require_artifacts)
+
+    assert "cytetype login" in error_info.value.message
+    assert error_info.value.error_code == "INVALID_TOKEN"
+    assert "API token is invalid or not found" in error_info.value.message
+    assert error_info.value.__cause__ is upload_error
+    submit.assert_not_called()
+    # Not reported as an artifact bug.
+    assert not any("github" in message.lower() for _, message in log_messages)
+
+
+def test_cytetype_run_raises_upload_authorization_errors_directly(
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+    log_messages: list[tuple[str, str]],
+) -> None:
+    upload_error = AuthorizationError("License expired", error_code="LICENSE_EXPIRED")
+    submit = MagicMock()
+    monkeypatch.setattr(
+        "cytetype.main.upload_obs_duckdb_file", MagicMock(side_effect=upload_error)
+    )
+    monkeypatch.setattr("cytetype.main.submit_annotation_job", submit)
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    with pytest.raises(AuthorizationError, match="License expired") as error_info:
+        ct.run(study_context="Test")
+
+    assert error_info.value.error_code == "LICENSE_EXPIRED"
+    assert "https://cytetype.nygen.io/dashboard" in error_info.value.message
+    assert error_info.value.__cause__ is upload_error
+    submit.assert_not_called()
+    assert not any("github" in message.lower() for _, message in log_messages)
+
+
+@patch("cytetype.main.wait_for_completion")
+@patch("cytetype.main.submit_annotation_job")
+def test_cytetype_run_sends_visibility(
+    mock_submit: MagicMock,
+    mock_wait: MagicMock,
+    mock_adata: anndata.AnnData,
+    mock_api_response: dict[str, Any],
+) -> None:
+    mock_submit.return_value = "job_public"
+    mock_wait.return_value = mock_api_response
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    ct.run(study_context="Test", visibility="public")
+
+    payload = mock_submit.call_args.args[2]
+    assert payload["visibility"] == "public"
+    assert "visibility" not in payload["input_data"]
+    assert ct.adata.uns["cytetype_jobDetails"]["visibility"] == "public"
+
+
+@patch("cytetype.main.wait_for_completion")
+@patch("cytetype.main.submit_annotation_job")
+def test_cytetype_run_omits_visibility_by_default(
+    mock_submit: MagicMock,
+    mock_wait: MagicMock,
+    mock_adata: anndata.AnnData,
+    mock_api_response: dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    mock_submit.return_value = "job_default_visibility"
+    mock_wait.return_value = mock_api_response
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    ct.run(study_context="Test")
+
+    payload = mock_submit.call_args.args[2]
+    assert "visibility" not in payload
+    assert "visibility" not in ct.adata.uns["cytetype_jobDetails"]
+    ct.adata.write_h5ad(tmp_path / "annotated.h5ad")
+
+
+def test_cytetype_run_rejects_invalid_visibility_before_upload(
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    upload_obs = MagicMock()
+    upload_vars = MagicMock()
+    submit = MagicMock()
+    monkeypatch.setattr("cytetype.main.upload_obs_duckdb_file", upload_obs)
+    monkeypatch.setattr("cytetype.main.upload_vars_h5_file", upload_vars)
+    monkeypatch.setattr("cytetype.main.submit_annotation_job", submit)
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    with pytest.raises(ValueError, match="visibility"):
+        ct.run(study_context="Test", visibility="everyone")  # type: ignore[arg-type]
+
+    upload_obs.assert_not_called()
+    upload_vars.assert_not_called()
+    submit.assert_not_called()
+    assert "cytetype_jobDetails" not in ct.adata.uns
+
+
+def test_visibility_is_the_last_run_parameter() -> None:
+    parameters = inspect.signature(CyteType.run).parameters
+
+    assert list(parameters)[-1] == "visibility"
+    assert parameters["visibility"].default is None
+
+
+def test_cytetype_init_warns_when_saved_credentials_file_is_invalid(
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+    log_messages: list[tuple[str, str]],
+) -> None:
+    load_error = ValueError("Invalid CyteType credentials file: /home/u/c.json")
+    monkeypatch.setattr(
+        "cytetype.main.load_credentials", MagicMock(side_effect=load_error)
+    )
+
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    warnings = [message for level, message in log_messages if level == "WARNING"]
+    assert any(
+        str(load_error) in m
+        and "Unless you pass auth_token to run()" in m
+        and "`cytetype logout`, then `cytetype setup`" in m
+        for m in warnings
+    )
+    assert ct.auth_token is None
+
+
+@pytest.mark.parametrize(
+    "load_error",
+    [
+        PermissionError("Permission denied"),
+        RuntimeError("Could not determine home directory."),
+    ],
+)
+def test_cytetype_init_warns_when_saved_credentials_cannot_be_read(
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+    log_messages: list[tuple[str, str]],
+    load_error: Exception,
+) -> None:
+    monkeypatch.setattr(
+        "cytetype.main.load_credentials", MagicMock(side_effect=load_error)
+    )
+
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    warnings = [message for level, message in log_messages if level == "WARNING"]
+    assert (
+        f"Saved CyteType credentials could not be read ({load_error}). Pass "
+        "`auth_token`, or make sure XDG_CONFIG_HOME or HOME points to a readable "
+        "configuration directory."
+    ) in warnings
+    assert not any("logout" in message for message in warnings)
+    assert ct.auth_token is None
+
+
+@pytest.mark.parametrize(
+    "load_error",
+    [
+        PermissionError("Permission denied"),
+        RuntimeError("Could not determine home directory."),
+    ],
+)
+def test_cytetype_run_reports_unreadable_credentials_as_authentication_error(
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+    load_error: Exception,
+) -> None:
+    upload_vars = MagicMock()
+    monkeypatch.setattr(
+        "cytetype.main.load_credentials", MagicMock(side_effect=load_error)
+    )
+    monkeypatch.setattr("cytetype.main.upload_vars_h5_file", upload_vars)
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    with pytest.raises(AuthenticationError, match="could not be read") as run_error:
+        ct.run(study_context="Test")
+    ct.adata.uns["cytetype_jobDetails"] = {"job_id": "job-1"}
+    with pytest.raises(AuthenticationError, match="XDG_CONFIG_HOME") as fetch_error:
+        ct.get_results()
+
+    for error_info in (run_error, fetch_error):
+        assert error_info.value.error_code == "AUTHENTICATION_REQUIRED"
+        assert error_info.value.__cause__ is load_error
+    upload_vars.assert_not_called()
+
+
+def test_cytetype_init_reports_missing_sign_in_before_preparation(
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+    log_messages: list[tuple[str, str]],
+) -> None:
+    calls: list[str] = []
+    resolve_gene_symbols_column = cytetype.main.resolve_gene_symbols_column
+
+    def _load_credentials(api_url: str) -> None:
+        calls.append(f"credentials {api_url}")
+
+    def _resolve(*args: Any, **kwargs: Any) -> str | None:
+        calls.append("preparation")
+        return resolve_gene_symbols_column(*args, **kwargs)
+
+    monkeypatch.setattr("cytetype.main.load_credentials", _load_credentials)
+    monkeypatch.setattr("cytetype.main.resolve_gene_symbols_column", _resolve)
+
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    assert calls == ["credentials https://cytetype.nygen.io", "preparation"]
+    # Not a warning: passing auth_token only to run() (as in CI) is fine.
+    assert (
+        "INFO",
+        "No saved CyteType sign-in found for https://cytetype.nygen.io. Unless you "
+        "pass auth_token to run(), run `cytetype setup` (or `cytetype login`) before "
+        "calling run().",
+    ) in log_messages
+    assert not any(
+        level == "WARNING" and "cytetype setup" in message
+        for level, message in log_messages
+    )
+    assert ct.auth_token is None
+    assert ct._auth_token_api_url is None
+
+
+def test_cytetype_init_with_saved_credentials_does_not_warn_or_keep_token(
+    mock_adata: anndata.AnnData,
+    log_messages: list[tuple[str, str]],
+) -> None:
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    assert not any("cytetype setup" in message for _, message in log_messages)
+    assert ct.auth_token is None
+    assert ct._auth_token_api_url is None
+
+
+def test_cytetype_init_with_auth_token_skips_credentials_check(
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credential_loader = MagicMock()
+    monkeypatch.setattr("cytetype.main.load_credentials", credential_loader)
+
+    CyteType(mock_adata, group_key="leiden", auth_token="explicit_token")
+
+    credential_loader.assert_not_called()
+
+
+def test_cytetype_get_results_renormalizes_stored_results_without_obs_backfill(
+    mock_adata: anndata.AnnData,
+) -> None:
+    ct = CyteType(mock_adata, group_key="leiden")
+    stored = {
+        "annotations": [
+            {
+                "clusterId": "1",
+                "annotation": "T Cell",
+                "ontologyTerm": "T cell",
+                "ontologyTermID": "CL:0000084",
+                "granularAnnotation": "",
+                "cellState": "",
+                "justification": "",
+                "supportingMarkers": [],
+                "conflictingMarkers": [],
+                "missingExpression": "",
+                "unexpectedExpression": "",
+            }
+        ],
+        "summary": {},
+        "clusterCategories": [],
+        "studyContext": "",
+        "raw_annotations": {
+            "1": {
+                "latest": {
+                    "annotation": {
+                        "clusterId": "1",
+                        "annotation": "T Cell",
+                        "fullOutput": {
+                            "cellType": {
+                                "label": "T Cell",
+                                "keySupportingGenes": ["CD3D", "CD3E"],
+                                "conclusion": "CD3 genes are expressed.",
+                            }
+                        },
+                    },
+                    "review": {"confidence": "High", "isHeterogeneous": False},
+                },
+                "history": [],
+            }
+        },
+    }
+    ct.adata.uns["cytetype_results"] = {
+        "job_id": "stored_job",
+        "result": json.dumps(stored),
+    }
+    obs_columns = list(ct.adata.obs.columns)
+
+    results = ct.get_results()
+
+    assert results is not None
+    annotation = results["annotations"][0]
+    assert annotation["supportingMarkers"] == ["CD3D", "CD3E"]
+    assert annotation["justification"] == "CD3 genes are expressed."
+    assert annotation["reviewerConfidence"] == "High"
+    assert annotation["isHeterogeneous"] is False
+    assert annotation["heterogeneityType"] is None
+    assert json.loads(ct.adata.uns["cytetype_results"]["result"]) == stored
+    assert list(ct.adata.obs.columns) == obs_columns
+
+
+@patch("cytetype.main.wait_for_completion")
+def test_cytetype_run_reads_replaced_saved_key_after_rejection(
+    mock_wait: MagicMock,
+    mock_adata: anndata.AnnData,
+    mock_api_response: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr("cytetype.main.load_credentials", load_credentials)
+    mock_wait.return_value = mock_api_response
+    submitted_tokens: list[str] = []
+
+    def _upload_vars(api_url: str, token: str, *args: Any, **kwargs: Any) -> Any:
+        if token == "revoked_key":
+            raise AuthenticationError(
+                "API token is invalid or not found.", error_code="INVALID_TOKEN"
+            )
+        return UploadResponse(
+            upload_id="vars_upload_456",
+            file_kind="vars_h5",
+            file_name="vars.h5",
+            size_bytes=100,
+            expires_at="2099-01-01T00:00:00Z",
+        )
+
+    def _submit(api_url: str, token: str, payload: dict[str, Any]) -> str:
+        submitted_tokens.append(token)
+        return "job_new_key"
+
+    monkeypatch.setattr("cytetype.main.upload_vars_h5_file", _upload_vars)
+    monkeypatch.setattr("cytetype.main.submit_annotation_job", _submit)
+    save_credentials(_saved_credentials("revoked_key"))
+    ct = CyteType(mock_adata, group_key="leiden")
+
+    with pytest.raises(AuthenticationError, match="cytetype setup --force"):
+        ct.run(study_context="Test")
+    assert submitted_tokens == []
+
+    # What `cytetype setup --force` does: save a new key for the same server.
+    save_credentials(_saved_credentials("new_key"))
+    ct.run(study_context="Test")
+
+    assert submitted_tokens == ["new_key"]
+    assert mock_wait.call_args.args[1] == "new_key"
+    assert ct.auth_token is None
+
+
+def test_cytetype_get_results_reads_saved_credentials_each_time(
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr("cytetype.main.load_credentials", load_credentials)
+    fetch = MagicMock(return_value=None)
+    monkeypatch.setattr("cytetype.main.fetch_remote_results", fetch)
+    save_credentials(_saved_credentials("first_key"))
+    ct = CyteType(mock_adata, group_key="leiden")
+    ct.adata.uns["cytetype_jobDetails"] = {
+        "job_id": "job-1",
+        "api_url": "https://cytetype.nygen.io",
+    }
+
+    ct.get_results()
+    save_credentials(_saved_credentials("second_key"))
+    ct.get_results()
+
+    assert [call.args[3] for call in fetch.call_args_list] == [
+        "first_key",
+        "second_key",
+    ]
+
+
+def test_cytetype_obs_artifact_builds_when_temp_directory_cannot_be_created(
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def _no_temp_directory(*args: Any, **kwargs: Any) -> Any:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr("cytetype.main.save_obs_duckdb_file", save_obs_duckdb)
+    monkeypatch.setattr(tempfile, "TemporaryDirectory", _no_temp_directory)
+    obs_path = tmp_path / "obs.duckdb"
+    obs_columns = list(mock_adata.obs.columns)
+
+    ct = CyteType(mock_adata, group_key="leiden", obs_duckdb_path=str(obs_path))
+
+    assert ct._artifact_build_errors == []
+    assert ct._obs_duckdb_path == str(obs_path)
+    assert list(mock_adata.obs.columns) == obs_columns
+    with duckdb.connect(str(obs_path), read_only=True) as con:
+        columns = [row[0] for row in con.execute("DESCRIBE obs").fetchall()]
+    assert "__vis_coordinates_X_umap_1" in columns
+
+
+def test_cytetype_failed_obs_artifact_leaves_no_columns_or_files(
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def _connect(database: str, *args: Any, **kwargs: Any) -> Any:
+        Path(database).write_bytes(b"partial")
+        Path(f"{database}.wal").write_bytes(b"partial")
+        raise duckdb.IOException("disk full")
+
+    monkeypatch.setattr("cytetype.main.save_obs_duckdb_file", save_obs_duckdb)
+    monkeypatch.setattr("cytetype.core.artifacts.duckdb.connect", _connect)
+    obs_path = tmp_path / "obs.duckdb"
+    obs_columns = list(mock_adata.obs.columns)
+
+    ct = CyteType(mock_adata, group_key="leiden", obs_duckdb_path=str(obs_path))
+
+    assert [name for name, _ in ct._artifact_build_errors] == ["obs_duckdb"]
+    assert ct._obs_duckdb_path is None
+    assert list(mock_adata.obs.columns) == obs_columns
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_cytetype_failed_vars_artifact_is_deleted(
+    mock_adata: anndata.AnnData,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def _write_partial_vars(*args: Any, **kwargs: Any) -> None:
+        Path(kwargs["out_file"]).write_bytes(b"partial")
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr("cytetype.main.save_features_matrix", _write_partial_vars)
+    vars_path = tmp_path / "vars.h5"
+
+    ct = CyteType(mock_adata, group_key="leiden", vars_h5_path=str(vars_path))
+
+    assert [name for name, _ in ct._artifact_build_errors] == ["vars_h5"]
+    assert ct._vars_h5_path is None
+    assert not vars_path.exists()
+
+
+@patch("cytetype.main.wait_for_completion")
+@patch("cytetype.main.submit_annotation_job")
+def test_cytetype_run_after_cleanup_requires_a_new_object(
+    mock_submit: MagicMock,
+    mock_wait: MagicMock,
+    mock_adata: anndata.AnnData,
+    mock_api_response: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_submit.return_value = "job_first"
+    mock_wait.return_value = mock_api_response
+    ct = CyteType(mock_adata, group_key="leiden")
+    ct.run(study_context="First run")
+    ct.cleanup()
+    credential_loader = MagicMock()
+    upload_vars = MagicMock()
+    upload_obs = MagicMock()
+    monkeypatch.setattr("cytetype.main.load_credentials", credential_loader)
+    monkeypatch.setattr("cytetype.main.upload_vars_h5_file", upload_vars)
+    monkeypatch.setattr("cytetype.main.upload_obs_duckdb_file", upload_obs)
+    mock_submit.reset_mock()
+
+    with pytest.raises(ValueError, match="deleted by cleanup"):
+        ct.run(study_context="Second run", override_existing_results=True)
+
+    credential_loader.assert_not_called()
+    upload_vars.assert_not_called()
+    upload_obs.assert_not_called()
+    mock_submit.assert_not_called()
+
+
+@patch("cytetype.main.wait_for_completion")
+@patch("cytetype.main.submit_annotation_job")
+def test_cytetype_run_after_cleanup_can_continue_without_artifacts(
+    mock_submit: MagicMock,
+    mock_wait: MagicMock,
+    mock_adata: anndata.AnnData,
+    mock_api_response: dict[str, Any],
+    log_messages: list[tuple[str, str]],
+) -> None:
+    mock_submit.return_value = "job_first"
+    mock_wait.return_value = mock_api_response
+    ct = CyteType(mock_adata, group_key="leiden")
+    ct.run(study_context="First run")
+    ct.cleanup()
+    mock_submit.return_value = "job_second"
+
+    ct.run(
+        study_context="Second run",
+        override_existing_results=True,
+        require_artifacts=False,
+    )
+
+    assert "uploaded_files" not in mock_submit.call_args.args[2]
+    assert (
+        "WARNING",
+        "The artifact files were deleted by cleanup(). Continuing without them.",
+    ) in log_messages
+    assert ct.adata.uns["cytetype_jobDetails"]["job_id"] == "job_second"
+
+
+@patch("cytetype.main.wait_for_completion")
+@patch("cytetype.main.submit_annotation_job")
+def test_cytetype_run_returns_the_relabeled_object_with_label_na(
+    mock_submit: MagicMock,
+    mock_wait: MagicMock,
+    mock_adata: anndata.AnnData,
+    mock_api_response: dict[str, Any],
+) -> None:
+    mock_submit.return_value = "job_label_na"
+    mock_wait.return_value = mock_api_response
+    mock_adata.obs.loc[mock_adata.obs.index[:5], "leiden"] = np.nan
+
+    ct = CyteType(mock_adata, group_key="leiden", label_na=True)
+    result = ct.run(study_context="Test")
+
+    # Results go to the returned object, a new one when NaN labels were relabeled.
+    assert result is ct.adata
+    assert result is not mock_adata
+    assert "cytetype_annotation_leiden" in result.obs.columns
+    assert "cytetype_annotation_leiden" not in mock_adata.obs.columns
+    assert int(mock_adata.obs["leiden"].isna().sum()) == 5

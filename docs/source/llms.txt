@@ -1,0 +1,55 @@
+# CyteType
+
+> Annotate the clusters of single-cell RNA-seq data with cell types, Cell Ontology terms, cell states and reviewer confidence, from Python (Scanpy and AnnData, package `cytetype`) or R (Seurat, package `CyteTypeR`). This documentation is published from the master branch of the CyteType repository and covers both clients, the report, the dashboard, Chat, the MCP connector and target analysis.
+
+- [Home](./): what CyteType does, a first Python and R example, and where to go next
+
+## Getting started
+
+- [Installation](getting-started/installation/): install the Python package or the CyteTypeR R package, check the installed version and keep it up to date
+- [Sign in and API keys](getting-started/sign-in/): create an account, sign in from Python or R, use API keys on remote machines and in CI, and manage the saved key
+- [Quickstart (Python)](getting-started/quickstart/): an executed notebook that preprocesses the PBMC 3k dataset with Scanpy, runs CyteType, and explores the labels, confidence and evidence
+- [Quickstart (R)](getting-started/quickstart-r/): the same workflow in R: preprocess the PBMC 3k dataset with Seurat, run CyteTypeR, and explore the labels, confidence, evidence and report
+- [How CyteType works](getting-started/how-cytetype-works/): what CyteType does with your clusters, the stages of a job, what you get back and what is uploaded
+
+## Prepare and run
+
+- [Prepare your data](guides/prepare-data/): get an AnnData or Seurat object ready, from normalized expression and cluster labels to marker genes, gene symbols, coordinates, raw counts and cell metadata
+- [Large datasets](guides/large-datasets/): work from backed AnnData, rank marker genes in chunks, cap cells per cluster, and plan memory, disk space and uploads
+- [Study context and metadata](guides/study-context/): write a study context, label runs with metadata tags, and choose the cell metadata columns that add evidence
+- [Run, monitor and rerun jobs](guides/running-jobs/): what `run()` and `CyteTypeR()` do from upload to results, how to follow a job, and how to fetch results later and rerun jobs
+- [Use your own LLM](guides/llm-configuration/): run the annotation agents on your own model provider, including AWS Bedrock, OpenAI-compatible endpoints and local Ollama models
+- [Automation, HPC and CI](guides/automation/): run CyteType from scripts, HPC batch jobs and CI, with an API key from a secret store and saved results
+
+## Results
+
+- [Results in AnnData and Seurat](results/results-in-your-data/): what CyteType adds to AnnData and Seurat objects, what `get_results()` and `GetResults()` return, and how to save, plot and export the results
+- [The CyteType report](results/report/): the interactive report, from following a running job to reading every evidence section, comparing with your own labels and exporting a CSV
+- [Interpret and review results](results/interpreting-results/): read labels, reviewer confidence, heterogeneity flags and classifications, know the limits of the results, and review a run with a checklist
+
+## Platform
+
+- [Dashboard](platform/dashboard/): manage your reports, API keys and account, in your personal or your organization's workspace
+- [Visibility and sharing](platform/sharing/): private, organization and public reports, email sharing, and what each level exposes
+- [Chat](platform/chat/): ask questions about completed runs and get answers, tables and figures from the stored results and uploaded data
+- [Target analysis](platform/target-analysis/): rank cell-type-resolved target hypotheses for a completed job, and read the results and their limits
+- [Connect AI assistants (MCP)](platform/mcp/): connect Claude, Claude Code, Cursor or another MCP client to explore and compare your annotation jobs
+- [Usage limits and quotas](platform/limits/): limits for personal accounts and organizations, the data, job, Chat and MCP limits, and the errors you get when you reach them
+
+## Reference
+
+- [Python API](api/index.html): exact signatures and docstrings of the `cytetype` package
+- [CyteType class](api/cytetype.html): prepare an AnnData object, run a job, read the results and delete the upload files
+- [Helpers](api/helpers.html): `marker_dotplot`, `rank_genes_groups_backed` and `subsample_by_group`
+- [LLM configuration](api/llm-config.html): the fields of each dict in `llm_configs`
+- [Exceptions](api/exceptions.html): the exception classes of the Python client and their error codes
+- [R function reference](reference/r-api/): the exported functions of the CyteTypeR package, grouped into preparing and running jobs, results, sign-in and errors, with their usage, arguments, return values and examples, generated from the help pages of CyteTypeR 0.6.0
+- [Command-line reference](reference/cli/): the `cytetype` (Python) and `cytetyper` (R) commands with every option, environment variable, output and exit code
+- [Errors and error codes](reference/errors/): the exceptions of the Python client and the conditions of CyteTypeR, the server error codes behind them, and what to do about each
+
+## Support
+
+- [Troubleshooting](support/troubleshooting/): fixes for common problems with signing in, preparing data, uploading files, running jobs and installing the clients
+- [FAQ](support/faq/): short answers about data requirements, analysis, privacy, access, pricing and support
+- [Security and privacy](support/security-and-privacy/): what the clients upload, how CyteType protects and uses your data, who can see your reports, and how deletion and retention work
+- [Cite CyteType and report versions](support/citing/): how to cite CyteType, what to record so that others can reproduce your annotations, and the licenses of the clients and the service

@@ -8,13 +8,14 @@ from concurrent.futures import ThreadPoolExecutor
 from .transport import HTTPTransport
 from .progress import ProgressDisplay
 from .exceptions import JobFailedError, TimeoutError, APIError, NetworkError
+from .normalization import normalize_cluster_annotation
 from .schemas import UploadResponse, UploadFileKind
 from ..config import logger
 
 
 MAX_UPLOAD_BYTES: dict[UploadFileKind, int] = {
     "obs_duckdb": 2 * 1024 * 1024 * 1024,  # 2GB
-    "vars_h5": 50 * 1024 * 1024 * 1024,  # 10GB
+    "vars_h5": 50 * 1024 * 1024 * 1024,  # 50GB
 }
 
 _CHUNK_RETRY_DELAYS = (1, 5, 20)
@@ -304,7 +305,14 @@ def fetch_job_results(
     auth_token: str | None,
     job_id: str,
 ) -> dict[str, Any]:
-    """Fetch and transform results for completed job."""
+    """Fetch the results of a completed job and normalize them.
+
+    Each cluster with an annotation becomes one entry of ``annotations``,
+    normalized by ``normalize_cluster_annotation``: blank legacy fields are
+    filled from the structured output and ``reviewerConfidence``,
+    ``isHeterogeneous`` and ``heterogeneityType`` are added. The API's
+    per-cluster data is returned unchanged as ``raw_annotations``.
+    """
     transport = HTTPTransport(base_url, auth_token)
     status_code, results_data = transport.get(f"results/{job_id}")
 
@@ -328,40 +336,9 @@ def fetch_job_results(
     # Convert dictionary format to list format for backward compatibility
     annotations_list = []
     for cluster_id, cluster_data in annotations_dict.items():
-        if isinstance(cluster_data, dict) and "latest" in cluster_data:
-            latest_data = cluster_data["latest"]
-            if isinstance(latest_data, dict) and "annotation" in latest_data:
-                annotation_data = latest_data["annotation"]
-                if isinstance(annotation_data, dict):
-                    # Transform to expected format
-                    transformed_annotation = {
-                        "clusterId": annotation_data.get("clusterId", cluster_id),
-                        "annotation": annotation_data.get("annotation", "Unknown"),
-                        "ontologyTerm": annotation_data.get(
-                            "cellOntologyTermName", "Unknown"
-                        ),
-                        "ontologyTermID": annotation_data.get(
-                            "cellOntologyTerm", "Unknown"
-                        ),
-                        "granularAnnotation": annotation_data.get(
-                            "granularAnnotation", ""
-                        ),
-                        "cellState": annotation_data.get("cellState", ""),
-                        "justification": annotation_data.get("justification", ""),
-                        "supportingMarkers": annotation_data.get(
-                            "supportingMarkers", []
-                        ),
-                        "conflictingMarkers": annotation_data.get(
-                            "conflictingMarkers", []
-                        ),
-                        "missingExpression": annotation_data.get(
-                            "missingExpression", ""
-                        ),
-                        "unexpectedExpression": annotation_data.get(
-                            "unexpectedExpression", ""
-                        ),
-                    }
-                    annotations_list.append(transformed_annotation)
+        normalized = normalize_cluster_annotation(cluster_id, cluster_data)
+        if normalized is not None:
+            annotations_list.append(normalized)
 
     return {
         "annotations": annotations_list,
@@ -455,7 +432,7 @@ def wait_for_completion(
                 # Warn about consecutive 404s with auth token
                 if auth_token and consecutive_not_found >= 3:
                     logger.warning(
-                        "⚠️  Getting consecutive 404 responses. "
+                        "Getting consecutive 404 responses. "
                         "This might indicate authentication issues."
                     )
                     consecutive_not_found = 0  # Reset to avoid spam

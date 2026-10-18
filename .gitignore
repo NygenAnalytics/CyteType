@@ -24,3 +24,8 @@ cytetype/_version.py
 *query.json
 notebooks/
 tmp/
+
+# Documentation. build/ above covers docs/build/; running MyST directly in docs/source
+# writes _build/ there. The notebooks in docs/source are tracked page sources.
+docs/source/_build/
+!/docs/source/**/*.ipynb

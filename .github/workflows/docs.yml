@@ -1,0 +1,74 @@
+name: Docs
+
+on:
+  # The Pages workflow builds the exact commit it publishes with this workflow.
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to check out and build
+        type: string
+        required: true
+      pages:
+        description: Prepare the documentation artifact for GitHub Pages
+        type: boolean
+        default: false
+  pull_request:
+    branches:
+      - master
+    paths:
+      - "docs/**"
+      - "cytetype/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "tests/test_docs_render.py"
+      - "tests/test_docs_structure.py"
+      - "tests/test_docs_execution.py"
+      - ".github/workflows/docs.yml"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          # The build reads the version and the page history from git.
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Install documentation dependencies
+        run: uv sync --locked --group docs
+      - name: Documentation tests
+        run: uv run --no-sync pytest tests/test_docs_structure.py tests/test_docs_render.py tests/test_docs_execution.py
+      - name: Render complete documentation for GitHub Pages
+        if: inputs.pages
+        env:
+          BASE_URL: /CyteType
+        run: make -C docs html
+      - name: Render complete documentation and check API coverage
+        if: ${{ !inputs.pages }}
+        # Notebook execution submits real CyteType jobs and runs locally on request.
+        # This job runs no notebooks.
+        run: make -C docs html
+      - name: Store documentation preview
+        if: ${{ !inputs.pages }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: documentation-preview
+          path: docs/build/site/_build/html/
+          if-no-files-found: error
+      - name: Store GitHub Pages site
+        if: inputs.pages
+        # Served at docs.nygen.io/CyteType/ by the organization site, which owns the root robots.txt.
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs/build/site/_build/html/

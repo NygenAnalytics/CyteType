@@ -24,9 +24,14 @@ from .exceptions import (
     JobNotFoundError,
     JobFailedError,
     LLMValidationError,
-    TimeoutError,
+    ClientDisconnectedError,
     NetworkError,
 )
+
+# Importable by name, but left out of __all__ so `from cytetype.api import *`
+# does not shadow the builtin TimeoutError; CyteTypeTimeoutError is the alias.
+from .exceptions import TimeoutError as TimeoutError
+from .exceptions import TimeoutError as CyteTypeTimeoutError
 
 __all__ = [
     # Client functions
@@ -51,6 +56,7 @@ __all__ = [
     "JobNotFoundError",
     "JobFailedError",
     "LLMValidationError",
-    "TimeoutError",
+    "ClientDisconnectedError",
+    "CyteTypeTimeoutError",
     "NetworkError",
 ]

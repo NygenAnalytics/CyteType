@@ -17,6 +17,7 @@ def build_annotation_payload(
     n_parallel_clusters: int,
     llm_configs: list[dict[str, Any]] | None = None,
     uploaded_files: dict[str, str | None] | UploadedFiles | None = None,
+    visibility: str | None = None,
 ) -> dict[str, Any]:
     """Build and validate API payload.
 
@@ -31,6 +32,7 @@ def build_annotation_payload(
         n_parallel_clusters: Number of parallel requests
         llm_configs: Optional LLM configurations
         uploaded_files: Optional upload IDs for obs_duckdb / vars_h5
+        visibility: Optional report visibility; omitted from the payload when None
 
     Returns:
         Validated payload dict for /annotate
@@ -97,6 +99,8 @@ def build_annotation_payload(
         payload["uploaded_files"] = validated_uploaded_files.model_dump(
             exclude_none=True
         )
+    if visibility is not None:
+        payload["visibility"] = visibility
     return payload
 
 

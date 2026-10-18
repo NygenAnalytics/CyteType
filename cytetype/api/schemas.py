@@ -13,13 +13,16 @@ def _get_client_version() -> str | None:
 LLMProvider: TypeAlias = Literal[
     "anthropic",
     "bedrock",
+    "deepseek",
     "fireworks",
     "google",
     "groq",
     "huggingface",
     "mistral",
+    "nebius",
     "openai",
     "openrouter",
+    "together",
     "vertex",
     "xai",
 ]
@@ -27,6 +30,7 @@ AgentType: TypeAlias = Literal[
     "contextualizer", "annotator", "reviewer", "summarizer", "clinician", "chat"
 ]
 UploadFileKind: TypeAlias = Literal["obs_duckdb", "vars_h5"]
+JobVisibility: TypeAlias = Literal["private", "org", "public"]
 
 
 class LLMModelConfig(BaseModel):
@@ -52,7 +56,7 @@ class LLMModelConfig(BaseModel):
     )
     skipValidation: bool = Field(
         default=False,
-        description="Whether to skip validation for the model. Only turn this off if you are sure that the model has worked before.",
+        description="Whether to skip validation for the model. Only turn this on if you are sure that the model has worked before. The server currently validates user-provided models regardless of this flag.",
     )
     allowFallback: bool = Field(
         default=False,
@@ -90,7 +94,7 @@ class InputData(BaseModel):
     )
     infoTags: dict[str, str] = Field(
         default_factory=dict,
-        description="Optional metadata key-value pairs to display in the report header. Values that look like URLs will be made clickable.",
+        description="Optional metadata key-value pairs to display in the report header. Values must be strings; values that look like URLs will be made clickable. A 'title' key also names the job.",
     )
     clusterLabels: dict[str, str] = Field(
         default_factory=dict,
@@ -116,7 +120,7 @@ class InputData(BaseModel):
         default=2,
         ge=1,
         le=50,
-        description="Number of parallel requests to make to the model",
+        description="Number of parallel requests to make to the model. Ignored when no llm_configs are provided; the server then uses its own setting.",
     )
     clientInfo: ClientInfo = Field(
         default_factory=ClientInfo,
@@ -209,6 +213,7 @@ class AnnotateRequest(BaseModel):
     input_data: InputData
     llm_configs: list[LLMModelConfig] | None = None
     uploaded_files: UploadedFiles | None = None
+    visibility: JobVisibility | None = None
 
 
 class UploadResponse(BaseModel):

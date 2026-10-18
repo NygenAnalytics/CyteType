@@ -1,4 +1,6 @@
+import contextlib
 import re
+import tempfile
 from typing import Any, cast
 from collections.abc import Sequence
 
@@ -12,6 +14,9 @@ import scipy.sparse as sp
 from anndata.abc import CSCDataset, CSRDataset
 
 from ..config import logger, WRITE_MEM_BUDGET
+
+# Below this many cells an in-memory matrix is small enough that backed mode brings no benefit.
+BACKED_MODE_HINT_MIN_CELLS = 100_000
 
 
 def _safe_column_dataset_name(
@@ -434,7 +439,10 @@ def save_features_matrix(
 
     use_row_batch_path = isinstance(mat, CSRDataset)
 
-    if not isinstance(mat, (CSRDataset, CSCDataset)):
+    if (
+        not isinstance(mat, (CSRDataset, CSCDataset))
+        and n_rows >= BACKED_MODE_HINT_MIN_CELLS
+    ):
         logger.warning(
             "For large datasets, use AnnData backed mode (e.g. sc.read_h5ad(..., backed='r')) "
             "so `adata.X` is a backed sparse dataset and avoids loading the full matrix in memory.",
@@ -472,12 +480,31 @@ def save_features_matrix(
                     raw_cell_batch,
                     min_chunk_size,
                 )
-            except Exception:
+            except Exception as exc:
                 logger.warning(
-                    "Failed to write raw counts group to %s, skipping.", out_file
+                    f"Failed to write raw counts group to {out_file}, skipping: {exc}"
                 )
                 if "raw" in f:
                     del f["raw"]
+
+
+def _duckdb_spill_directory(
+    temp_directory: str | None,
+) -> contextlib.AbstractContextManager[str | None]:
+    if temp_directory is not None:
+        return contextlib.nullcontext(temp_directory)
+    # A shared fixed path such as /tmp/duckdb breaks for the second user on a
+    # multi-user host and is never cleaned up, so default to a private one.
+    try:
+        return tempfile.TemporaryDirectory(
+            prefix="cytetype-duckdb-", ignore_cleanup_errors=True
+        )
+    except OSError as exc:
+        logger.warning(
+            f"Could not create a temporary directory for DuckDB ({exc}); "
+            "using DuckDB's default spill location."
+        )
+        return contextlib.nullcontext(None)
 
 
 def save_obs_duckdb(
@@ -488,31 +515,42 @@ def save_obs_duckdb(
     table_name: str = "obs",
     threads: int = 4,
     memory_limit: str = "4GB",
-    temp_directory: str = "/tmp/duckdb",
+    temp_directory: str | None = None,
 ) -> None:
-    """Persist adata.obs to a DuckDB table."""
+    """Persist adata.obs to a DuckDB table.
+
+    DuckDB spills to ``temp_directory`` when ``memory_limit`` is exceeded. When it
+    is None, a private directory is created under the system temp location
+    (honoring ``TMPDIR``) and removed after writing; if that fails, DuckDB's
+    default location is used. Columns temporarily added to ``obs_df`` are always
+    removed again.
+    """
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table_name):
         raise ValueError(
             "Invalid table_name. Use letters, numbers, and underscores only."
         )
 
     added_cols: list[str] = []
-    if obsm_coordinates is not None and coordinates_key is not None:
-        col1 = f"__vis_coordinates_{coordinates_key}_1"
-        col2 = f"__vis_coordinates_{coordinates_key}_2"
-        obs_df[col1] = obsm_coordinates[:, 0]
-        obs_df[col2] = obsm_coordinates[:, 1]
-        added_cols = [col1, col2]
+    with _duckdb_spill_directory(temp_directory) as spill_path:
+        try:
+            if obsm_coordinates is not None and coordinates_key is not None:
+                col1 = f"__vis_coordinates_{coordinates_key}_1"
+                col2 = f"__vis_coordinates_{coordinates_key}_2"
+                added_cols = [col1, col2]
+                obs_df[col1] = obsm_coordinates[:, 0]
+                obs_df[col2] = obsm_coordinates[:, 1]
 
-    dd_config: dict[str, Any] = {
-        "threads": threads,
-        "memory_limit": memory_limit,
-        "temp_directory": temp_directory,
-    }
-    try:
-        with duckdb.connect(out_file, config=dd_config) as con:
-            con.register("obs_df", obs_df)
-            con.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM obs_df")
-    finally:
-        for col in added_cols:
-            obs_df.drop(columns=col, inplace=True, errors="ignore")
+            dd_config: dict[str, Any] = {
+                "threads": threads,
+                "memory_limit": memory_limit,
+            }
+            if spill_path is not None:
+                dd_config["temp_directory"] = spill_path
+            with duckdb.connect(out_file, config=dd_config) as con:
+                con.register("obs_df", obs_df)
+                con.execute(
+                    f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM obs_df"
+                )
+        finally:
+            for col in added_cols:
+                obs_df.drop(columns=col, inplace=True, errors="ignore")

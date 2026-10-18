@@ -1,6 +1,22 @@
 import requests
 
 from ._version import __version__
+from .api.exceptions import (
+    APIError,
+    AuthenticationError,
+    AuthorizationError,
+    ClientDisconnectedError,
+    CyteTypeError,
+    JobFailedError,
+    JobNotFoundError,
+    LLMValidationError,
+    NetworkError,
+    QuotaExceededError,
+    RateLimitError,
+)
+
+# Renamed so `from cytetype import *` does not shadow the builtin TimeoutError.
+from .api.exceptions import TimeoutError as CyteTypeTimeoutError
 from .config import logger
 from .main import CyteType
 from .plotting import marker_dotplot
@@ -12,6 +28,19 @@ __all__ = [
     "marker_dotplot",
     "rank_genes_groups_backed",
     "subsample_by_group",
+    # Exceptions
+    "CyteTypeError",
+    "APIError",
+    "AuthenticationError",
+    "AuthorizationError",
+    "RateLimitError",
+    "QuotaExceededError",
+    "JobNotFoundError",
+    "JobFailedError",
+    "LLMValidationError",
+    "ClientDisconnectedError",
+    "NetworkError",
+    "CyteTypeTimeoutError",
 ]
 
 _PYPI_JSON_URL = "https://pypi.org/pypi/cytetype/json"
