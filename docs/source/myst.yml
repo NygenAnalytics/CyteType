@@ -92,7 +92,7 @@ site:
   template: https://github.com/myst-templates/book-theme/archive/23f2df5493e23dfb1d9433c8aa64c87beb4232a3.zip
   parts:
     primary_sidebar_footer: <!-- No sidebar footer. -->
-    navbar_end: '<a class="docs-home-link" href="https://docs.nygen.io/"><img class="brand-symbol" src="https://docs.nygen.io/assets/brand/logo/nygen-symbol.svg" alt="Nygen documentation home" width="32" height="32"></a>'
+    footer: '<a class="docs-home-link" href="https://docs.nygen.io/"><img class="brand-symbol" src="https://docs.nygen.io/assets/brand/logo/nygen-symbol.svg" alt="Nygen documentation home" width="32" height="32"></a>'
   options:
     folders: true
     style: https://docs.nygen.io/assets/brand/myst.css
