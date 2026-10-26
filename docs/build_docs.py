@@ -400,6 +400,9 @@ def write_discovery_files(
             f'<link rel="describedby" href="{base_url}/llms.txt"/>'
             f'<link rel="alternate" type="text/plain" href="{base_url}/{export}"/>'
         )
+        if route.endswith("/"):
+            script_url = "https://docs.nygen.io/assets/brand/docs.js"
+            links += f'<script defer src="{script_url}"></script>'
         if not count:
             links = canonical_tag + links
         if contents.count("</head>") != 1:
@@ -655,6 +658,77 @@ def prepare_site(*, preview: bool = False) -> Path:
     return SITE
 
 
+def link_shared_brand_assets(html: Path) -> None:
+    source_options = yaml.safe_load((SOURCE / "myst.yml").read_text())["site"]["options"]
+    config = json.loads((html / "config.json").read_text())
+    urls = {
+        config["options"][key]: source_options[key]
+        for key in ("logo", "logo_dark", "favicon", "style")
+    }
+    nodes = [config["parts"]["navbar_end"]["mdast"]]
+    symbols = []
+    while nodes:
+        node = nodes.pop()
+        if node.get("type") == "image" and node.get("class") == "brand-symbol":
+            symbols.append(node["url"])
+        nodes.extend(node.get("children", []))
+    if len(symbols) != 1:
+        raise ValueError(f"Expected one Nygen symbol in {html / 'config.json'}")
+    urls[symbols[0]] = "https://docs.nygen.io/assets/brand/logo/nygen-symbol.svg"
+    base_url = os.environ.get("BASE_URL", "").rstrip("/")
+    for page in html.rglob("*"):
+        if page.suffix not in {".html", ".json"}:
+            continue
+        contents = page.read_text()
+        for local, public in urls.items():
+            contents = contents.replace(f"{base_url}/build{local}", public)
+            contents = contents.replace(local, public)
+        for name, public in (
+            ("favicon.ico", source_options["favicon"]),
+            ("myst-theme.css", source_options["style"]),
+        ):
+            contents = contents.replace(f"{base_url}/{name}", public)
+        page.write_text(contents)
+    roots = list((html / "build").glob("root-*.js"))
+    if len(roots) != 1:
+        raise ValueError(f"Expected one generated theme root in {html / 'build'}")
+    contents = roots[0].read_text()
+    for name, public in (
+        ("favicon.ico", source_options["favicon"]),
+        ("myst-theme.css", source_options["style"]),
+    ):
+        pattern = r'href:`\$\{[\w$]+\|\|""\}/' + re.escape(name) + r'`'
+        contents, count = re.subn(pattern, f"href:{json.dumps(public)}", contents)
+        if count != 1:
+            raise ValueError(f"Expected one {name} link in {roots[0]}")
+    roots[0].write_text(contents)
+    renames = {
+        roots[0].name: f"root-{hashlib.sha256(contents.encode()).hexdigest()[:12]}.js"
+    }
+    manifests = list((html / "build").glob("manifest-*.js"))
+    if len(manifests) != 1:
+        raise ValueError(f"Expected one generated manifest in {html / 'build'}")
+    contents = manifests[0].read_text().replace(roots[0].name, renames[roots[0].name])
+    renames[manifests[0].name] = (
+        f"manifest-{hashlib.sha256(contents.encode()).hexdigest()[:12]}.js"
+    )
+    for page in html.rglob("*"):
+        if page.suffix not in {".html", ".json", ".js"}:
+            continue
+        contents = page.read_text()
+        updated = contents
+        for old, new in renames.items():
+            updated = updated.replace(old, new)
+        if updated != contents:
+            page.write_text(updated)
+    for old, new in renames.items():
+        (html / "build" / old).rename(html / "build" / new)
+    for local in urls:
+        (html / "build" / local.lstrip("/")).unlink()
+    (html / "favicon.ico").unlink()
+    (html / "myst-theme.css").unlink()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -683,6 +757,7 @@ def main() -> None:
             SITE / "_build" / "html", DOCS / "build" / "api" / ".doctrees"
         ),
     )
+    link_shared_brand_assets(SITE / "_build" / "html")
 
 
 if __name__ == "__main__":
