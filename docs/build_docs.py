@@ -402,6 +402,26 @@ def write_discovery_files(
         )
         if route.endswith("/"):
             script_url = "https://docs.nygen.io/assets/brand/docs.js"
+            links += (
+                '<link rel="preload" as="font" '
+                'href="https://docs.nygen.io/assets/brand/fonts/inter/latin.woff2" '
+                'type="font/woff2" crossorigin/>'
+            )
+            links += """<script>
+(() => {
+  const observer = new MutationObserver(() => {
+    if (!document.querySelector('main')) return;
+    observer.disconnect();
+    const sidebar = document.querySelector('.myst-primary-sidebar-nav');
+    const home = document.querySelector('.myst-home-link');
+    if (sidebar?.clientHeight && home) {
+      const saved = sessionStorage.getItem('nygen-docs-sidebar:' + home.pathname);
+      if (saved !== null) sidebar.scrollTop = Number(saved);
+    }
+  });
+  observer.observe(document.documentElement, {childList: true, subtree: true});
+})();
+</script>"""
             links += f'<script defer src="{script_url}"></script>'
         if not count:
             links = canonical_tag + links
@@ -659,13 +679,15 @@ def prepare_site(*, preview: bool = False) -> Path:
 
 
 def link_shared_brand_assets(html: Path) -> None:
-    source_options = yaml.safe_load((SOURCE / "myst.yml").read_text())["site"]["options"]
+    source_options = yaml.safe_load((SOURCE / "myst.yml").read_text())["site"][
+        "options"
+    ]
     config = json.loads((html / "config.json").read_text())
     urls = {
         config["options"][key]: source_options[key]
         for key in ("logo", "logo_dark", "favicon", "style")
     }
-    nodes = [config["parts"]["navbar_end"]["mdast"]]
+    nodes = [config["parts"]["footer"]["mdast"]]
     symbols = []
     while nodes:
         node = nodes.pop()
@@ -697,7 +719,7 @@ def link_shared_brand_assets(html: Path) -> None:
         ("favicon.ico", source_options["favicon"]),
         ("myst-theme.css", source_options["style"]),
     ):
-        pattern = r'href:`\$\{[\w$]+\|\|""\}/' + re.escape(name) + r'`'
+        pattern = r'href:`\$\{[\w$]+\|\|""\}/' + re.escape(name) + r"`"
         contents, count = re.subn(pattern, f"href:{json.dumps(public)}", contents)
         if count != 1:
             raise ValueError(f"Expected one {name} link in {roots[0]}")
@@ -729,6 +751,67 @@ def link_shared_brand_assets(html: Path) -> None:
     (html / "myst-theme.css").unlink()
 
 
+def prepare_site_template(site: Path) -> None:
+    template_url = yaml.safe_load((site / "myst.yml").read_text())["site"]["template"]
+    template = (
+        site
+        / "_build"
+        / "templates"
+        / "site"
+        / hashlib.sha256(template_url.encode()).hexdigest()
+    )
+    if not (template / "template.yml").is_file():
+        subprocess.run(
+            ["myst", "templates", "download", "--site", template_url],
+            cwd=site,
+            check=True,
+        )
+    replacements = {
+        "build/index.js": (
+            'Pje.default.useState(i);(0,Pje.useEffect)(()=>{o.state==="idle"'
+            "&&s(tzt([t],e,r).includes(t.id))}",
+            'Pje.default.useState(!0);(0,Pje.useEffect)(()=>{o.state==="idle"&&s(!0)}',
+        ),
+        "public/build/_shared/chunk-LS4ALTVG.js": (
+            '_0.default.useState(o);(0,_0.useEffect)(()=>{i.state==="idle"'
+            "&&a(DS([t],e,r).includes(t.id))}",
+            '_0.default.useState(!0);(0,_0.useEffect)(()=>{i.state==="idle"&&a(!0)}',
+        ),
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(replacements, sort_keys=True).encode()
+    ).hexdigest()[:12]
+    for filename, (original, expanded) in replacements.items():
+        path = template / filename
+        if not path.is_file() and filename.startswith("public/"):
+            path = path.with_stem(f"{path.stem}-{fingerprint}")
+        content = path.read_text()
+        if content.count(original) == 1 and expanded not in content:
+            path.write_text(content.replace(original, expanded))
+        elif original in content or content.count(expanded) != 1:
+            raise ValueError(f"Unexpected navigation component in {path}")
+    modules = list((template / "public" / "build").rglob("*.js"))
+    filenames = {
+        path.name: f"{path.stem}-{fingerprint}.js"
+        for path in modules
+        if not path.stem.endswith(f"-{fingerprint}")
+    }
+    if not filenames:
+        return
+    if len({path.name for path in modules}) != len(modules):
+        raise ValueError(f"Duplicate browser module filenames in {template}")
+    references = re.compile(r"(?<![\w$().\[\]-])[\w$().\[\]-]+\.js\b")
+    for path in [template / "build" / "index.js", *modules]:
+        path.write_text(
+            references.sub(
+                lambda match: filenames.get(match[0], match[0]), path.read_text()
+            )
+        )
+    for path in modules:
+        if path.name in filenames:
+            path.rename(path.with_name(filenames[path.name]))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -737,9 +820,11 @@ def main() -> None:
         help="Allow missing executions and label those pages as source previews",
     )
     args = parser.parse_args()
+    site = prepare_site(preview=args.preview)
+    prepare_site_template(site)
     subprocess.run(
         ["myst", "build", "--html", "--strict"],
-        cwd=prepare_site(preview=args.preview),
+        cwd=site,
         check=True,
     )
     revision = subprocess.run(
