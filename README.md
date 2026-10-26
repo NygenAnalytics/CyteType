@@ -1,5 +1,4 @@
-
-<h1 align="left">CyteType</h1>
+<h1><img src="https://docs.nygen.io/assets/brand/logo/cytetype-dark.png" alt="" width="96" align="right"> CyteType</h1>
 <h3 align="left">Agentic, Evidence-Based Cell Type Annotation for Single-Cell RNA-seq</h3>
 
 <p align="left">

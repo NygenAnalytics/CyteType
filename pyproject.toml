@@ -43,7 +43,7 @@ dev = [
 # Builds the MyST site and the Sphinx API reference (make -C docs html), and
 # executes the documentation notebooks locally (make -C docs execute-docs).
 docs = [
-    "mystmd>=1.11.0",
+    "mystmd==1.11.0",
     "jupytext>=1.19.6",
     "nbclient>=0.10",
     "nbformat>=5.10",

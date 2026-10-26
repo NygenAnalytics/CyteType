@@ -1,6 +1,7 @@
 version: 1
 project:
   title: CyteType
+  short_title: Overview
   description: Annotate the clusters of single-cell RNA-seq data from Python (Scanpy and
     AnnData) or R (Seurat) with CyteType, and read the evidence for each label.
   github: https://github.com/NygenAnalytics/CyteType
@@ -88,10 +89,16 @@ project:
     - url: https://github.com/NygenAnalytics/CyteTypeR/issues
       title: Report an R issue
 site:
-  template: book-theme
+  template: https://github.com/myst-templates/book-theme/archive/23f2df5493e23dfb1d9433c8aa64c87beb4232a3.zip
   parts:
     primary_sidebar_footer: <!-- No sidebar footer. -->
+    navbar_end: '<a class="docs-home-link" href="https://docs.nygen.io/"><img class="brand-symbol" src="https://docs.nygen.io/assets/brand/logo/nygen-symbol.svg" alt="Nygen documentation home" width="32" height="32"></a>'
   options:
     folders: true
+    style: https://docs.nygen.io/assets/brand/myst.css
+    favicon: https://docs.nygen.io/assets/brand/logo/cytetype.ico
+    logo: https://docs.nygen.io/assets/brand/logo/cytetype.svg
+    logo_dark: https://docs.nygen.io/assets/brand/logo/cytetype.svg
+    logo_alt: CyteType
     logo_text: CyteType
     hide_authors: true

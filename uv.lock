@@ -578,7 +578,7 @@ docs = [
     { name = "ipywidgets" },
     { name = "jupytext", specifier = ">=1.19.6" },
     { name = "myst-parser" },
-    { name = "mystmd", specifier = ">=1.11.0" },
+    { name = "mystmd", specifier = "==1.11.0" },
     { name = "nbclient", specifier = ">=0.10" },
     { name = "nbformat", specifier = ">=5.10" },
     { name = "pyyaml" },
