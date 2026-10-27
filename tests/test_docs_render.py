@@ -1619,6 +1619,9 @@ def test_html_fragment_rejects_missing_or_duplicate_navigation() -> None:
 def test_page_metadata_preserves_content_and_completes_share_tags(
     route: str, title: str, expected: str
 ) -> None:
+    pytest.importorskip("jupytext")
+    pytest.importorskip("nbformat")
+    pytest.importorskip("yaml")
     from docs import build_docs
 
     class Metadata(HTMLParser):
@@ -1632,7 +1635,9 @@ def test_page_metadata_preserves_content_and_completes_share_tags(
             attributes = dict(attrs)
             if tag == "meta":
                 name = attributes.get("name") or attributes.get("property")
-                self.values.setdefault(name, []).append(attributes.get("content"))
+                content = attributes.get("content")
+                assert name is not None and content is not None
+                self.values.setdefault(name, []).append(content)
 
     canonical = build_docs.PUBLIC_URL + route
     body = "<body><h1>Keep this title</h1><p>Keep this content.</p></body></html>"
@@ -1679,6 +1684,9 @@ def test_page_metadata_preserves_content_and_completes_share_tags(
     ],
 )
 def test_page_metadata_rejects_missing_authored_metadata(head: str) -> None:
+    pytest.importorskip("jupytext")
+    pytest.importorskip("nbformat")
+    pytest.importorskip("yaml")
     from docs import build_docs
 
     with pytest.raises(ValueError, match="Expected a title and description"):
