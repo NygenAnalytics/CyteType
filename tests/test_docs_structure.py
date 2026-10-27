@@ -188,7 +188,8 @@ def test_navigation_publishes_every_page() -> None:
         "https://github.com/NygenAnalytics/CyteType/issues",
         "https://github.com/NygenAnalytics/CyteTypeR/issues",
     }
-    assert {"llms.txt", "../build/api"} <= set(project["static_files"])
+    assert "llms.txt" in project["static_files"]
+    assert "../build/api" not in project["static_files"]
     assert "reference/api/**" in project["exclude"]
 
     published = _toc_files()

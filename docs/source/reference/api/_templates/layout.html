@@ -1,0 +1,31 @@
+{% extends "sphinx_book_theme/layout.html" %}
+
+{% block css %}
+<script>
+(() => {
+  const theme = localStorage.getItem('myst:theme') ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  localStorage.setItem('mode', theme);
+  localStorage.setItem('theme', theme);
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.classList.add(theme);
+})();
+</script>
+{{ super() }}
+{% endblock %}
+
+{% block extrahead %}
+{{ super() }}
+{% if pagename == "search" %}
+<meta name="robots" content="noindex, follow">
+{% endif %}
+{% endblock %}
+
+{% block body_tag %}
+<body class="docs-api" data-default-mode="{{ default_mode }}">
+{% endblock %}
+
+{% block docs_navbar %}
+<header id="pst-header" class="bd-header myst-top-nav docs-api-top-nav">
+  <nav class="docs-header-placeholder"></nav>
+</header>
+{% endblock %}
