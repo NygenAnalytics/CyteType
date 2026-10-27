@@ -12,11 +12,11 @@ import subprocess
 import tomllib
 from datetime import datetime
 from fnmatch import fnmatchcase
-from html import escape
+from html import escape, unescape
 from html.parser import HTMLParser
 from importlib import import_module
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 from xml.etree import ElementTree
 
 import jupytext
@@ -327,6 +327,237 @@ def sitemap_last_modified(html: Path, doctrees: Path) -> dict[str, str]:
     }
 
 
+def navigation_head_html() -> str:
+    return """<link rel="preload" as="font" href="https://docs.nygen.io/assets/brand/fonts/inter/latin.woff2" type="font/woff2" crossorigin/>
+<script>
+(() => {
+  const observer = new MutationObserver(() => {
+    if (!document.querySelector('main')) return;
+    observer.disconnect();
+    const sidebar = document.querySelector('.myst-primary-sidebar-nav');
+    const home = document.querySelector('.myst-home-link');
+    if (sidebar?.clientHeight && home) {
+      const saved = sessionStorage.getItem('nygen-docs-sidebar:' + home.pathname);
+      if (saved !== null) sidebar.scrollTop = Number(saved);
+    }
+  });
+  observer.observe(document.documentElement, {childList: true, subtree: true});
+})();
+</script>
+<script defer src="https://docs.nygen.io/assets/brand/docs.js"></script>"""
+
+
+def html_fragment(contents: str, class_name: str) -> str:
+    class Fragment(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.lines = [0, *(match.end() for match in re.finditer("\n", contents))]
+            self.depth = 0
+            self.start = 0
+            self.matches: list[str] = []
+
+        def position(self) -> int:
+            line, column = self.getpos()
+            return self.lines[line - 1] + column
+
+        def handle_starttag(
+            self, tag: str, attrs: list[tuple[str, str | None]]
+        ) -> None:
+            if self.depth:
+                self.depth += tag not in ArticleText.void_tags
+            elif class_name in (dict(attrs).get("class") or "").split():
+                self.start = self.position()
+                self.depth = 1
+
+        def handle_startendtag(
+            self, tag: str, attrs: list[tuple[str, str | None]]
+        ) -> None:
+            pass
+
+        def handle_endtag(self, tag: str) -> None:
+            if not self.depth:
+                return
+            self.depth -= 1
+            if not self.depth:
+                end = contents.index(">", self.position()) + 1
+                self.matches.append(contents[self.start : end])
+
+    parser = Fragment()
+    parser.feed(contents)
+    if parser.depth or len(parser.matches) != 1:
+        raise ValueError(f"Expected one complete .{class_name} element")
+    return parser.matches[0]
+
+
+def include_api_navigation(site: Path) -> None:
+    base_url = os.environ.get("BASE_URL", "").rstrip("/")
+    source = DOCS / "build" / "api" / "index.html"
+    navigation = html_fragment(source.read_text(), "docs-api-tree")
+    links = []
+    for href, title in re.findall(
+        r'<a\b[^>]*\bhref="([^"]+)"[^>]*>(.*?)</a>', navigation, re.DOTALL
+    ):
+        href = unescape(href)
+        if urlsplit(href).scheme or href.startswith("//") or not href.endswith(".html"):
+            raise ValueError(f"Expected an API page link in {source}: {href}")
+        links.append(
+            {
+                "title": " ".join(unescape(re.sub(r"<[^>]+>", "", title)).split()),
+                "url": urljoin(f"{base_url}/api/", href),
+                "open_in_same_tab": True,
+            }
+        )
+    if not links:
+        raise ValueError(f"No API navigation links in {source}")
+    config = yaml.safe_load((site / "myst.yml").read_text())
+    entries = list(config["project"]["toc"])
+    matches = []
+    while entries:
+        entry = entries.pop()
+        if entry.get("url") == f"{base_url}/api/index.html":
+            matches.append(entry)
+        entries.extend(entry.get("children", []))
+    if len(matches) != 1:
+        raise ValueError(f"Expected one API reference entry in {site / 'myst.yml'}")
+    matches[0]["children"] = links
+    (site / "myst.yml").write_text(yaml.safe_dump(config, sort_keys=False))
+
+
+def integrate_api_navigation(html: Path) -> None:
+    def static_classes(match: re.Match[str]) -> str:
+        classes = [
+            token
+            for token in match[1].split()
+            if (
+                token.startswith("myst-")
+                or token in {"collapsible-content", "sr-only", "hide-mac", "show-mac"}
+            )
+            and token not in {"myst-toc-item-exact", "myst-search-bar-disabled"}
+        ]
+        if "myst-search-bar" in classes:
+            classes.append("search-button__button")
+        if "myst-top-nav-menu-button" in classes:
+            classes.extend(("sidebar-toggle", "primary-toggle"))
+        return f'class="{" ".join(classes)}"'
+
+    home = (html / "index.html").read_text()
+    header = html_fragment(home, "myst-top-nav-bar")
+    header = re.sub(r"<script\b[^>]*>.*?</script>", "", header, flags=re.DOTALL)
+    header = re.sub(r'\bclass="([^"]*)"', static_classes, header)
+    header, count = re.subn(
+        r'<button\b[^>]*\bclass="[^"]*\bmyst-search-bar\b[^"]*"[^>]*>',
+        lambda match: re.sub(
+            r' (?:aria-expanded|data-state|aria-label|aria-controls)="[^"]*"',
+            "",
+            match[0][:-1],
+        )
+        + ' aria-label="Search documentation" aria-controls="pst-search-dialog">',
+        header,
+    )
+    if count != 1:
+        raise ValueError("Expected one MyST search button in the guide header")
+    navigation = html_fragment(home, "myst-primary-sidebar-toc")
+    navigation = re.sub(r' aria-current="[^"]*"', "", navigation)
+    navigation = re.sub(r'\bclass="([^"]*)"', static_classes, navigation)
+    base_url = os.environ.get("BASE_URL", "").rstrip("/")
+    for page in (html / "api").glob("*.html"):
+        contents = page.read_text()
+        route = f"{base_url}/{page.relative_to(html).as_posix()}"
+
+        def mark_current(match: re.Match[str]) -> str:
+            tag = match[0]
+            href = re.search(r'\bhref="([^"]+)"', tag)
+            return (
+                tag[:-1] + ' aria-current="page">'
+                if href and unescape(href[1]) == route
+                else tag
+            )
+
+        current_navigation = re.sub(r"<a\b[^>]*>", mark_current, navigation)
+        contents = contents.replace(
+            html_fragment(contents, "docs-header-placeholder"), header
+        )
+        contents = contents.replace(
+            html_fragment(contents, "docs-api-tree"), current_navigation
+        )
+        if contents.count("</head>") != 1:
+            raise ValueError(f"Expected one HTML head in {page}")
+        page.write_text(
+            contents.replace("</head>", navigation_head_html() + "</head>", 1)
+        )
+
+
+def update_page_metadata(contents: str, canonical: str) -> str:
+    class Description(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.values: list[str] = []
+
+        def handle_starttag(
+            self, tag: str, attrs: list[tuple[str, str | None]]
+        ) -> None:
+            attributes = dict(attrs)
+            if tag == "meta" and attributes.get("name") == "description":
+                self.values.append(attributes.get("content") or "")
+
+    if contents.count("</head>") != 1:
+        raise ValueError(f"Expected one HTML head for {canonical}")
+    head, body = contents.split("</head>", 1)
+    titles = re.findall(r"<title>(.*?)</title>", head, re.DOTALL)
+    description = Description()
+    description.feed(head)
+    if len(titles) != 1 or len(description.values) != 1 or not description.values[0]:
+        raise ValueError(f"Expected a title and description for {canonical}")
+    title = unescape(titles[0])
+    tool = PUBLIC_URL.rsplit("/", 1)[-1]
+    parts = re.split(r" (?:-|—) ", title)
+    if len(parts) == 2 and (
+        parts[0] == parts[1]
+        or canonical == f"{PUBLIC_URL}/api/index.html"
+        and parts[1] == f"{tool} API reference"
+    ):
+        title = parts[0]
+    if canonical == f"{PUBLIC_URL}/" and title == tool:
+        title = f"{tool} documentation"
+    if (
+        canonical == f"{PUBLIC_URL}/api/{tool.lower()}.html"
+        and title == f"{tool} API reference"
+    ):
+        title = f"{tool} Python API"
+    image = f"https://docs.nygen.io/assets/brand/logo/{tool.lower()}-dark.png"
+    metadata = {
+        "og:title": title,
+        "og:description": description.values[0],
+        "og:type": "website",
+        "og:url": canonical,
+        "og:image": image,
+        "og:image:type": "image/png",
+        "og:image:width": "512",
+        "og:image:height": "512",
+        "og:image:alt": f"{tool} logo",
+        "twitter:card": "summary",
+        "twitter:image": image,
+        "twitter:image:alt": f"{tool} logo",
+    }
+
+    def remove_managed(match: re.Match[str]) -> str:
+        key = re.search(r"""\b(?:name|property)=["']([^"']+)["']""", match[0])
+        return "" if key and key[1] in metadata else match[0]
+
+    head = re.sub(r"<meta\b[^>]*>", remove_managed, head)
+    head = re.sub(
+        r"<title>.*?</title>",
+        lambda _: f"<title>{escape(title)}</title>",
+        head,
+        count=1,
+        flags=re.DOTALL,
+    )
+    for name, value in metadata.items():
+        attribute = "property" if name.startswith("og:") else "name"
+        head += f'<meta {attribute}="{name}" content="{escape(value, quote=True)}"/>'
+    return head + "</head>" + body
+
+
 def write_discovery_files(
     html: Path,
     api_text: Path,
@@ -390,7 +621,7 @@ def write_discovery_files(
         page = html / route.lstrip("/")
         if route.endswith("/"):
             page /= "index.html"
-        contents = page.read_text()
+        contents = update_page_metadata(page.read_text(), canonical)
         canonical_tag = (
             f'<link rel="canonical" href="{escape(canonical, quote=True)}"/>'
         )
@@ -401,28 +632,7 @@ def write_discovery_files(
             f'<link rel="alternate" type="text/plain" href="{base_url}/{export}"/>'
         )
         if route.endswith("/"):
-            script_url = "https://docs.nygen.io/assets/brand/docs.js"
-            links += (
-                '<link rel="preload" as="font" '
-                'href="https://docs.nygen.io/assets/brand/fonts/inter/latin.woff2" '
-                'type="font/woff2" crossorigin/>'
-            )
-            links += """<script>
-(() => {
-  const observer = new MutationObserver(() => {
-    if (!document.querySelector('main')) return;
-    observer.disconnect();
-    const sidebar = document.querySelector('.myst-primary-sidebar-nav');
-    const home = document.querySelector('.myst-home-link');
-    if (sidebar?.clientHeight && home) {
-      const saved = sessionStorage.getItem('nygen-docs-sidebar:' + home.pathname);
-      if (saved !== null) sidebar.scrollTop = Number(saved);
-    }
-  });
-  observer.observe(document.documentElement, {childList: true, subtree: true});
-})();
-</script>"""
-            links += f'<script defer src="{script_url}"></script>'
+            links += navigation_head_html()
         if not count:
             links = canonical_tag + links
         if contents.count("</head>") != 1:
@@ -767,29 +977,47 @@ def prepare_site_template(site: Path) -> None:
             check=True,
         )
     replacements = {
-        "build/index.js": (
-            'Pje.default.useState(i);(0,Pje.useEffect)(()=>{o.state==="idle"'
-            "&&s(tzt([t],e,r).includes(t.id))}",
-            'Pje.default.useState(!0);(0,Pje.useEffect)(()=>{o.state==="idle"&&s(!0)}',
-        ),
-        "public/build/_shared/chunk-LS4ALTVG.js": (
-            '_0.default.useState(o);(0,_0.useEffect)(()=>{i.state==="idle"'
-            "&&a(DS([t],e,r).includes(t.id))}",
-            '_0.default.useState(!0);(0,_0.useEffect)(()=>{i.state==="idle"&&a(!0)}',
-        ),
+        "build/index.js": [
+            (
+                'Pje.default.useState(i);(0,Pje.useEffect)(()=>{o.state==="idle"'
+                "&&s(tzt([t],e,r).includes(t.id))}",
+                'Pje.default.useState(!0);(0,Pje.useEffect)(()=>{o.state==="idle"&&s(!0)}',
+            ),
+            (
+                'title:o!=null&&o.title?`${o.title}${a?` - ${a}`:""}`:a',
+                'title:o!=null&&o.title?o.title===a?`${a} documentation`:`${o.title}${a?` - ${a}`:""}`:a',
+            ),
+        ],
+        "public/build/_shared/chunk-LS4ALTVG.js": [
+            (
+                '_0.default.useState(o);(0,_0.useEffect)(()=>{i.state==="idle"'
+                "&&a(DS([t],e,r).includes(t.id))}",
+                '_0.default.useState(!0);(0,_0.useEffect)(()=>{i.state==="idle"&&a(!0)}',
+            ),
+        ],
+        "public/build/_shared/chunk-WGW5MSUV.js": [
+            (
+                'title:m!=null&&m.title?`${m.title}${g?` - ${g}`:""}`:g',
+                'title:m!=null&&m.title?m.title===g?`${g} documentation`:`${m.title}${g?` - ${g}`:""}`:g',
+            ),
+        ],
     }
     fingerprint = hashlib.sha256(
         json.dumps(replacements, sort_keys=True).encode()
     ).hexdigest()[:12]
-    for filename, (original, expanded) in replacements.items():
+    for filename, rules in replacements.items():
         path = template / filename
         if not path.is_file() and filename.startswith("public/"):
-            path = path.with_stem(f"{path.stem}-{fingerprint}")
-        content = path.read_text()
-        if content.count(original) == 1 and expanded not in content:
-            path.write_text(content.replace(original, expanded))
-        elif original in content or content.count(expanded) != 1:
-            raise ValueError(f"Unexpected navigation component in {path}")
+            matches = list(path.parent.glob(f"{path.stem}-*.js"))
+            if len(matches) != 1:
+                raise ValueError(f"Expected one cached theme module for {path}")
+            path = matches[0]
+        for original, replacement in rules:
+            content = path.read_text()
+            if content.count(original) == 1 and replacement not in content:
+                path.write_text(content.replace(original, replacement))
+            elif original in content or content.count(replacement) != 1:
+                raise ValueError(f"Unexpected theme component in {path}")
     modules = list((template / "public" / "build").rglob("*.js"))
     filenames = {
         path.name: f"{path.stem}-{fingerprint}.js"
@@ -821,11 +1049,17 @@ def main() -> None:
     )
     args = parser.parse_args()
     site = prepare_site(preview=args.preview)
+    include_api_navigation(site)
     prepare_site_template(site)
     subprocess.run(
         ["myst", "build", "--html", "--strict"],
         cwd=site,
         check=True,
+    )
+    shutil.copytree(
+        DOCS / "build" / "api",
+        SITE / "_build" / "html" / "api",
+        ignore=shutil.ignore_patterns(".doctrees"),
     )
     revision = subprocess.run(
         ["git", "describe", "--always", "--dirty", "--abbrev=40"],
@@ -843,6 +1077,7 @@ def main() -> None:
         ),
     )
     link_shared_brand_assets(SITE / "_build" / "html")
+    integrate_api_navigation(SITE / "_build" / "html")
 
 
 if __name__ == "__main__":

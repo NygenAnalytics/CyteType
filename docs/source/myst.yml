@@ -12,7 +12,6 @@ project:
   - reference/api/**
   static_files:
   - llms.txt
-  - ../build/api
   toc:
   - file: index.md
   - title: Getting started
