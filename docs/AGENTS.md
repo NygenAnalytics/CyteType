@@ -107,7 +107,6 @@ the generated site as the Pages artifact; the organization's Pages site serves i
 Executing a notebook runs every cell. A page that calls `CyteType.run()`, such as the
 quickstart, uploads data and submits a real annotation job: it needs a saved CyteType sign-in
 on this machine, counts toward the account's job limits, and waits for the job to finish.
-Ask before executing unless the current request already authorizes it.
 
 ```bash
 uv run cytetype setup
