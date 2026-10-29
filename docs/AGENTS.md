@@ -3,8 +3,7 @@
 These instructions cover documentation sources, notebook execution, and site builds. The site documents the Python SDK (`cytetype`) and the R package (`CyteTypeR`) together and is published at `https://docs.nygen.io/CyteType/`.
 
 - Author executable pages as tracked `.ipynb` files in `docs/source/`. Each notebook is the page's sole source and contains its prose, code, outputs, and execution metadata. The executed page today is `getting-started/quickstart.ipynb`.
-- Keep prose guides and API references in Markdown. Code in Markdown pages is not executed, so check every function, argument, default and column name against the source.
-- Explain each logical step in notebook code with a comment. Put comments on their own lines, with a blank line before each comment unless it starts the code cell.
+- Keep prose guides and API references in Markdown.
 - Give every code cell that draws figures a `figure_descriptions` list in its cell metadata, with one nonempty description per figure, in output order. The build uses them as alt text and fails without them. Cell metadata is not part of the code fingerprint, so adding or editing descriptions needs no re-execution.
 - MyST builds guides and notebooks. Sphinx builds only `docs/source/reference/api/`, which the site serves at `/api/`.
 - Import the SDK as `import cytetype` or `from cytetype import ...`, and use `cytetype.*` autodoc targets, the names under which users import each object.
@@ -33,7 +32,7 @@ obj <- CyteTypeR(obj, prepped, study_context = "...")
 
 The pages document CyteTypeR 0.6.0 and the Python client 0.21.0. When a client release is planned that changes documented behaviour, keep documenting the released version and list each affected passage under "Update for new CyteTypeR releases" in `docs/MAINTENANCE.md`; update the listed passages when the release ships. Regenerate `reference/r-api.md` from CyteTypeR's help pages with `Rscript docs/render_r_reference.R ../CyteTypeR` after each CyteTypeR release.
 
-Never leave HTML comments in the pages. The site publishes each page's source file, page data and search index, so comments become public. Track pending work, such as screenshots to add, in `docs/MAINTENANCE.md` instead.
+Track pending work, such as screenshots to add, in `docs/MAINTENANCE.md` rather than in HTML comments.
 
 ## Links
 
