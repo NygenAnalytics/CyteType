@@ -1,6 +1,7 @@
 import contextlib
 import re
 import tempfile
+from pathlib import Path
 from typing import Any, cast
 from collections.abc import Sequence
 
@@ -17,6 +18,11 @@ from ..config import logger, WRITE_MEM_BUDGET
 
 # Below this many cells an in-memory matrix is small enough that backed mode brings no benefit.
 BACKED_MODE_HINT_MIN_CELLS = 100_000
+
+# The server reads obs.duckdb with its own DuckDB release. Without this setting,
+# DuckDB 2.0 writes a storage format that DuckDB 1.x cannot open; v1.4.0 is
+# readable by every DuckDB release from 1.4, the oldest this package supports.
+OBS_DUCKDB_STORAGE_COMPATIBILITY = "v1.4.0"
 
 
 def _safe_column_dataset_name(
@@ -517,7 +523,9 @@ def save_obs_duckdb(
     memory_limit: str = "4GB",
     temp_directory: str | None = None,
 ) -> None:
-    """Persist adata.obs to a DuckDB table.
+    """Persist adata.obs to a DuckDB table in a new file that DuckDB 1.4 and later can read.
+
+    An existing file at ``out_file`` is replaced.
 
     DuckDB spills to ``temp_directory`` when ``memory_limit`` is exceeded. When it
     is None, a private directory is created under the system temp location
@@ -543,9 +551,14 @@ def save_obs_duckdb(
             dd_config: dict[str, Any] = {
                 "threads": threads,
                 "memory_limit": memory_limit,
+                "storage_compatibility_version": OBS_DUCKDB_STORAGE_COMPATIBILITY,
             }
             if spill_path is not None:
                 dd_config["temp_directory"] = spill_path
+            # DuckDB fixes the storage format when it creates a file, so a file
+            # left by an earlier run would keep its format. Start from a new one.
+            for stale in (out_file, f"{out_file}.wal"):
+                Path(stale).unlink(missing_ok=True)
             with duckdb.connect(out_file, config=dd_config) as con:
                 con.register("obs_df", obs_df)
                 con.execute(

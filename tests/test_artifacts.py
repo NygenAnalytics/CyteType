@@ -1,3 +1,4 @@
+import struct
 import tempfile
 from collections.abc import Iterable
 from typing import Any
@@ -418,3 +419,44 @@ def test_save_obs_duckdb_removes_added_columns_when_writing_fails(
         )
 
     assert list(obs_df.columns) == ["cluster", "n_genes"]
+
+
+# DuckDB 1.4 reads storage versions 64 to 67; DuckDB 2.0 writes 999 by default.
+_DUCKDB_1_4_READABLE_STORAGE_VERSIONS = range(64, 68)
+
+
+def _storage_version(path: Path) -> int:
+    with open(path, "rb") as handle:
+        header = handle.read(20)
+    assert header[8:12] == b"DUCK", f"{path} is not a DuckDB database file"
+    return int(struct.unpack("<Q", header[12:20])[0])
+
+
+def test_save_obs_duckdb_writes_a_file_duckdb_1_4_can_read(tmp_path: Path) -> None:
+    out_path = tmp_path / "obs.duckdb"
+
+    save_obs_duckdb(str(out_path), _obs_frame())
+
+    assert _storage_version(out_path) in _DUCKDB_1_4_READABLE_STORAGE_VERSIONS
+    with duckdb.connect(str(out_path), read_only=True) as con:
+        rows = con.execute(
+            "SELECT CAST(cluster AS VARCHAR), n_genes FROM obs ORDER BY n_genes"
+        ).fetchall()
+    assert rows == [("a", 10), ("b", 20), ("a", 30)]
+
+
+def test_save_obs_duckdb_replaces_a_file_left_by_an_earlier_run(
+    tmp_path: Path,
+) -> None:
+    out_path = tmp_path / "obs.duckdb"
+    # Written without the compatibility setting, as an older client release
+    # did; with DuckDB 2.x this file uses a format DuckDB 1.x cannot open.
+    with duckdb.connect(str(out_path)) as con:
+        con.execute("CREATE TABLE leftover AS SELECT 1 AS x")
+
+    save_obs_duckdb(str(out_path), _obs_frame())
+
+    assert _storage_version(out_path) in _DUCKDB_1_4_READABLE_STORAGE_VERSIONS
+    with duckdb.connect(str(out_path), read_only=True) as con:
+        tables = [row[0] for row in con.execute("SHOW TABLES").fetchall()]
+    assert tables == ["obs"]
