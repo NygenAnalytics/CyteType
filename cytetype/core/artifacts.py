@@ -1,6 +1,8 @@
 import contextlib
+import os
 import re
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any, cast
 from collections.abc import Sequence
@@ -513,6 +515,12 @@ def _duckdb_spill_directory(
         return contextlib.nullcontext(None)
 
 
+def _is_duckdb_database(path: Path) -> bool:
+    with open(path, "rb") as handle:
+        header = handle.read(12)
+    return header[8:12] == b"DUCK"
+
+
 def save_obs_duckdb(
     out_file: str,
     obs_df: pd.DataFrame,
@@ -525,7 +533,8 @@ def save_obs_duckdb(
 ) -> None:
     """Persist adata.obs to a DuckDB table in a new file that DuckDB 1.4 and later can read.
 
-    An existing file at ``out_file`` is replaced.
+    An existing DuckDB file at ``out_file`` is replaced once the new file is
+    written; any other existing file raises ValueError and is left in place.
 
     DuckDB spills to ``temp_directory`` when ``memory_limit`` is exceeded. When it
     is None, a private directory is created under the system temp location
@@ -536,6 +545,12 @@ def save_obs_duckdb(
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table_name):
         raise ValueError(
             "Invalid table_name. Use letters, numbers, and underscores only."
+        )
+    out_path = Path(out_file)
+    if out_path.exists() and not _is_duckdb_database(out_path):
+        raise ValueError(
+            f"{out_file} exists and is not a DuckDB database. Pass a new path or "
+            "the path of an earlier obs.duckdb artifact."
         )
 
     added_cols: list[str] = []
@@ -556,14 +571,22 @@ def save_obs_duckdb(
             if spill_path is not None:
                 dd_config["temp_directory"] = spill_path
             # DuckDB fixes the storage format when it creates a file, so a file
-            # left by an earlier run would keep its format. Start from a new one.
-            for stale in (out_file, f"{out_file}.wal"):
-                Path(stale).unlink(missing_ok=True)
-            with duckdb.connect(out_file, config=dd_config) as con:
-                con.register("obs_df", obs_df)
-                con.execute(
-                    f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM obs_df"
-                )
+            # left by an earlier run would keep its format. Write a new file
+            # next to the destination and replace the old one only once the
+            # write has succeeded, so a failed write keeps the previous file.
+            tmp_path = out_path.with_name(f".{out_path.name}.{uuid.uuid4().hex}.tmp")
+            try:
+                with duckdb.connect(str(tmp_path), config=dd_config) as con:
+                    con.register("obs_df", obs_df)
+                    con.execute(
+                        f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM obs_df"
+                    )
+                # A WAL left by the old file would be replayed into the new one.
+                Path(f"{out_file}.wal").unlink(missing_ok=True)
+                os.replace(tmp_path, out_path)
+            finally:
+                for leftover in (tmp_path, Path(f"{tmp_path}.wal")):
+                    leftover.unlink(missing_ok=True)
         finally:
             for col in added_cols:
                 obs_df.drop(columns=col, inplace=True, errors="ignore")

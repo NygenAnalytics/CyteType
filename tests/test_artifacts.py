@@ -460,3 +460,45 @@ def test_save_obs_duckdb_replaces_a_file_left_by_an_earlier_run(
     with duckdb.connect(str(out_path), read_only=True) as con:
         tables = [row[0] for row in con.execute("SHOW TABLES").fetchall()]
     assert tables == ["obs"]
+
+
+def test_save_obs_duckdb_refuses_to_replace_a_file_that_is_not_a_duckdb_database(
+    tmp_path: Path,
+) -> None:
+    out_path = tmp_path / "notes.txt"
+    out_path.write_text("keep me")
+    obs_df = _obs_frame()
+
+    with pytest.raises(ValueError, match="not a DuckDB database"):
+        save_obs_duckdb(
+            str(out_path),
+            obs_df,
+            obsm_coordinates=np.zeros((3, 2)),
+            coordinates_key="X_umap",
+        )
+
+    assert out_path.read_text() == "keep me"
+    assert list(obs_df.columns) == ["cluster", "n_genes"]
+
+
+def test_save_obs_duckdb_keeps_the_previous_file_when_writing_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out_path = tmp_path / "obs.duckdb"
+    save_obs_duckdb(str(out_path), _obs_frame())
+    connect = duckdb.connect
+
+    def _fail_after_creating_the_file(database: str, *args: Any, **kwargs: Any) -> Any:
+        connect(database, *args, **kwargs).close()
+        raise duckdb.IOException("disk full")
+
+    monkeypatch.setattr(
+        "cytetype.core.artifacts.duckdb.connect", _fail_after_creating_the_file
+    )
+    with pytest.raises(duckdb.IOException):
+        save_obs_duckdb(str(out_path), _obs_frame().iloc[:1])
+
+    with connect(str(out_path), read_only=True) as con:
+        n_rows = con.execute("SELECT count(*) FROM obs").fetchone()
+    assert n_rows == (3,)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["obs.duckdb"]
