@@ -21,6 +21,8 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.12'] # Match requires-python in pyproject.toml
+        # The oldest DuckDB this package supports and the current major release.
+        duckdb-version: ['1.4.4', '2.0.1']
 
     steps:
     - uses: actions/checkout@v4
@@ -48,6 +50,6 @@ jobs:
       shell: bash
 
     - name: Run Pytest
-      run: uv run pytest
+      run: uv run --with "duckdb==${{ matrix.duckdb-version }}" pytest
       shell: bash
     
